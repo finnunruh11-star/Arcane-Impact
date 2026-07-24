@@ -50,7 +50,6 @@ func _ready() -> void:
 	_player.combat_impact.connect(_impact_director.fin_combat_impact)
 	_player.effect_requested.connect(_impact_director.play_effect)
 	_player.audio_requested.connect(_impact_director.play_audio)
-	_player.parry_impact.connect(_impact_director.play_fin_parry)
 	_player.announcement_requested.connect(_hud.announce)
 	_player.defeated.connect(_on_player_defeated)
 	_spawn_wave()

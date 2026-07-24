@@ -36,6 +36,7 @@ const MOVE_SPEED := 332.0
 const INPUT_BUFFER_DURATION := 0.12
 const DASH_MIN_DISTANCE := 185.0
 const DASH_MAX_DISTANCE := 445.0
+const FLASHSTEP_COOLDOWN := 0.75
 const SURGE_BASE_RADIUS := 148.0
 const SURGE_STACK_RADIUS := 8.0
 const ULTIMATE_RADIUS := 560.0
@@ -416,7 +417,7 @@ func _begin_flashstep() -> void:
 	_attack_area.monitoring = true
 	_set_enemy_phasing(true)
 	_invulnerable_time = maxf(_invulnerable_time, 0.23)
-	flashstep_cooldown = 2.2
+	flashstep_cooldown = FLASHSTEP_COOLDOWN
 	effect_requested.emit(&"sniff_dash", global_position, _dash_direction, 0.94)
 	lightning_arc_requested.emit(global_position, global_position + _dash_direction * distance, 0.56)
 	audio_requested.emit(&"sniff_step", 0.55)

@@ -36,7 +36,7 @@ Fin, the Shadow Artificer, features:
 - tap-cycle and held directional switching among Nightblade, Arbalest,
   Huntsman, and Artificer forms;
 - a shared five-stack Pierce Mark preparation and finisher economy;
-- concealment, backstabs, enemy-intent reading, and Masterful Parry;
+- concealment, backstabs, and an escape-only Umbral Step;
 - Crossbow, Bow, Dagger, Throwing Dagger, Shadow Bind, Potions, Smoke Bombs,
   and Mutivarg's Rod, with no Legendary items;
 - persistent reloads and finite supplies that continue recovering across forms.
@@ -105,7 +105,7 @@ All four slices include:
 | Form signature / charge | Hold/release right mouse | Hold/release left trigger |
 | Form tool 1 | Q | Right bumper |
 | Form tool 2 | E | Left bumper |
-| Masterful Parry | Space | A |
+| Umbral Step | Space | A |
 | Cycle / directional form select | Tap / hold R | Tap / hold Y |
 
 ## Run locally

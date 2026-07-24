@@ -5,7 +5,6 @@ extends CharacterBody2D
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
 signal audio_requested(cue: StringName, power: float)
-signal parry_impact(at: Vector2, direction: Vector2, perfect: bool, power: float)
 signal stats_changed
 signal state_changed(label: String)
 signal form_changed(form: int, label: String)
@@ -36,7 +35,7 @@ enum State {
 	SIGNATURE_RECOVERY,
 	ABILITY_RECOVERY,
 	SHADOW_DASH,
-	PARRY,
+	UMBRAL_STEP,
 	FORM_SWITCH,
 	STAGGER,
 	DEAD,
@@ -48,8 +47,9 @@ const MAX_WARD := 52.0
 const MOVE_SPEED := 310.0
 const MAX_PIERCE_MARKS := 5
 const FORM_HOLD_THRESHOLD := 0.24
-const PERFECT_PARRY_WINDOW := 0.18
-const READIED_PARRY_WINDOW := 0.32
+const UMBRAL_STEP_DURATION := 1.25
+const UMBRAL_STEP_SPEED_MULTIPLIER := 1.90
+const UMBRAL_STEP_COOLDOWN := 4.0
 const CROSSBOW_RELOAD_TIME := 2.15
 const DAGGER_CHARGE_TIME := 3.4
 const POTION_CHARGE_TIME := 11.0
@@ -75,6 +75,7 @@ var quick_crank_cooldown := 0.0
 var scatterbolt_cooldown := 0.0
 var shadow_bind_cooldown := 0.0
 var mutivarg_cooldown := 0.0
+var umbral_step_cooldown := 0.0
 
 var _form := Form.NIGHTBLADE
 var _state := State.FREE
@@ -95,8 +96,6 @@ var _knockback_velocity := Vector2.ZERO
 var _dash_direction := Vector2.RIGHT
 var _dash_speed := 0.0
 var _invulnerable_time := 0.0
-var _parry_elapsed := 0.0
-var _readied_parry_source: Node2D
 
 var _form_input_held := false
 var _form_hold_time := 0.0
@@ -192,6 +191,7 @@ func _tick_timers(delta: float) -> void:
 	scatterbolt_cooldown = maxf(0.0, scatterbolt_cooldown - delta)
 	shadow_bind_cooldown = maxf(0.0, shadow_bind_cooldown - delta)
 	mutivarg_cooldown = maxf(0.0, mutivarg_cooldown - delta)
+	umbral_step_cooldown = maxf(0.0, umbral_step_cooldown - delta)
 	_invulnerable_time = maxf(0.0, _invulnerable_time - delta)
 	_veil_time = maxf(0.0, _veil_time - delta)
 	_smoke_veil_time = maxf(0.0, _smoke_veil_time - delta)
@@ -371,12 +371,10 @@ func _update_state(delta: float) -> void:
 				collision_mask = 2 | 4
 				_state_time = 0.13
 				_set_state(State.ABILITY_RECOVERY)
-		State.PARRY:
-			_parry_elapsed += delta
+		State.UMBRAL_STEP:
 			_state_time -= delta
 			if _state_time <= 0.0:
-				_state_time = 0.09
-				_set_state(State.ABILITY_RECOVERY)
+				_end_umbral_step()
 		State.SIGNATURE_RECOVERY, State.ABILITY_RECOVERY, State.FORM_SWITCH, State.STAGGER:
 			_state_time -= delta
 			if _state_time <= 0.0:
@@ -396,8 +394,8 @@ func _return_to_free_or_buffer() -> void:
 func _handle_free_inputs() -> void:
 	if _form_input_held:
 		return
-	if Input.is_action_just_pressed(&"evade"):
-		_begin_masterful_parry()
+	if Input.is_action_just_pressed(&"evade") and umbral_step_cooldown <= 0.0:
+		_begin_umbral_step()
 	elif Input.is_action_just_pressed(&"ability_1"):
 		_use_ability_1()
 	elif Input.is_action_just_pressed(&"ability_2"):
@@ -430,8 +428,10 @@ func _update_movement() -> void:
 			state_speed = 0.16
 		State.SIGNATURE_RECOVERY, State.ABILITY_RECOVERY, State.FORM_SWITCH:
 			state_speed = 0.68
-		State.PARRY:
-			state_speed = 0.28
+		State.UMBRAL_STEP:
+			velocity = move_input.normalized() * MOVE_SPEED * UMBRAL_STEP_SPEED_MULTIPLIER
+			_knockback_velocity = Vector2.ZERO
+			return
 		State.SHADOW_DASH:
 			velocity = _dash_direction * _dash_speed
 			return
@@ -799,35 +799,29 @@ func _throw_smoke_bomb() -> void:
 	stats_changed.emit()
 
 
-func _begin_masterful_parry() -> void:
-	_readied_parry_source = _find_readable_windup()
-	_parry_elapsed = 0.0
-	_state_time = READIED_PARRY_WINDOW
-	_active_action = &"masterful_parry"
-	effect_requested.emit(&"fin_parry", global_position + aim_direction * 28.0, aim_direction, 0.68)
-	audio_requested.emit(&"fin_parry_ready", 0.48 if is_instance_valid(_readied_parry_source) else 0.25)
-	_set_state(State.PARRY)
+func _begin_umbral_step() -> void:
+	if umbral_step_cooldown > 0.0:
+		return
+	umbral_step_cooldown = UMBRAL_STEP_COOLDOWN
+	_state_time = UMBRAL_STEP_DURATION
+	_active_action = &"umbral_step"
+	_attack_area.monitoring = false
+	_hit_target_ids.clear()
+	_knockback_velocity = Vector2.ZERO
+	_invulnerable_time = maxf(_invulnerable_time, 0.16)
+	collision_mask = 4
+	effect_requested.emit(&"fin_step", global_position, _movement_or_aim_direction(), 1.12)
+	audio_requested.emit(&"fin_umbral_step", 0.82)
+	announcement_requested.emit("UMBRAL STEP")
+	_set_state(State.UMBRAL_STEP)
+	stats_changed.emit()
 
 
-func _find_readable_windup() -> Node2D:
-	var best: Node2D
-	var best_distance := INF
-	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
-		if not enemy_node is Node2D or not enemy_node.has_method(&"is_attack_winding_up"):
-			continue
-		if not bool(enemy_node.call(&"is_attack_winding_up")):
-			continue
-		var enemy := enemy_node as Node2D
-		var distance := global_position.distance_to(enemy.global_position)
-		if distance > 245.0 or distance >= best_distance:
-			continue
-		if enemy.has_method(&"get_facing_direction"):
-			var toward_fin := (global_position - enemy.global_position).normalized()
-			if (enemy.call(&"get_facing_direction") as Vector2).dot(toward_fin) < 0.55:
-				continue
-		best = enemy
-		best_distance = distance
-	return best
+func _end_umbral_step() -> void:
+	collision_mask = 2 | 4
+	velocity = Vector2.ZERO
+	_set_state(State.FREE)
+	stats_changed.emit()
 
 
 func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
@@ -837,29 +831,6 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 		effect_requested.emit(&"fin_shadow", global_position, -incoming_direction, 0.54)
 		audio_requested.emit(&"fin_phase", 0.42)
 		return 0.0
-	var attacker_direction := -incoming_direction.normalized()
-	var in_front := aim_direction.dot(attacker_direction) >= cos(deg_to_rad(78.0))
-	if _state == State.PARRY and in_front:
-		var source_matches_read := is_instance_valid(_readied_parry_source) and packet.source == _readied_parry_source
-		var perfect := _parry_elapsed <= PERFECT_PARRY_WINDOW or (source_matches_read and _parry_elapsed <= READIED_PARRY_WINDOW)
-		var taken := 0.0 if perfect else packet.health_damage * 0.22
-		if is_instance_valid(packet.source):
-			if packet.source.has_method(&"apply_pierce_mark"):
-				packet.source.call(&"apply_pierce_mark", 2 if perfect else 1, 9.0)
-			if perfect and packet.source.has_method(&"apply_control_lock"):
-				packet.source.call(&"apply_control_lock", 0.68)
-			if perfect and packet.source is Node2D:
-				_step_behind_attacker(packet.source as Node2D)
-		resolve = minf(MAX_RESOLVE, resolve + packet.resolve_damage * (0.72 if perfect else 0.28))
-		_apply_health_damage(taken)
-		parry_impact.emit(global_position + attacker_direction * 30.0, attacker_direction, perfect, packet.health_damage)
-		effect_requested.emit(&"fin_parry", global_position + attacker_direction * 28.0, attacker_direction, 1.25 if perfect else 0.82)
-		audio_requested.emit(&"fin_perfect_parry" if perfect else &"fin_parry", clampf(packet.health_damage / 36.0, 0.25, 1.0))
-		_state_time = 0.13
-		_set_state(State.ABILITY_RECOVERY)
-		stats_changed.emit()
-		return taken
-
 	var remaining_damage := packet.health_damage
 	if _brace_time > 0.0:
 		remaining_damage *= 0.72
@@ -887,16 +858,6 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 		defeated.emit()
 	stats_changed.emit()
 	return remaining_damage
-
-
-func _step_behind_attacker(attacker: Node2D) -> void:
-	var facing := (global_position - attacker.global_position).normalized()
-	if attacker.has_method(&"get_facing_direction"):
-		facing = attacker.call(&"get_facing_direction") as Vector2
-	global_position = attacker.global_position - facing.normalized() * 72.0
-	aim_direction = facing
-	_invulnerable_time = maxf(_invulnerable_time, 0.16)
-
 
 func _apply_health_damage(amount: float) -> void:
 	health = maxf(0.0, health - maxf(0.0, amount))
@@ -1074,15 +1035,11 @@ func is_invulnerable() -> bool:
 
 
 func is_concealed() -> bool:
-	return _veil_time > 0.0 or _smoke_veil_time > 0.0
+	return _veil_time > 0.0 or _smoke_veil_time > 0.0 or _state == State.UMBRAL_STEP
 
 
-func is_parrying() -> bool:
-	return _state == State.PARRY
-
-
-func get_readied_parry_target() -> Node2D:
-	return _readied_parry_source
+func is_umbral_stepping() -> bool:
+	return _state == State.UMBRAL_STEP
 
 
 func get_form() -> int:
@@ -1175,8 +1132,8 @@ func get_state_label() -> String:
 			return get_signature_name().capitalize()
 		State.SHADOW_DASH:
 			return "Shadow Lunge"
-		State.PARRY:
-			return "Reading Intent" if is_instance_valid(_readied_parry_source) else "Masterful Parry"
+		State.UMBRAL_STEP:
+			return "Umbral Step"
 		State.FORM_SWITCH:
 			return "Drawing %s" % get_form_label().capitalize()
 		_:
@@ -1222,10 +1179,12 @@ func _draw() -> void:
 		draw_line(-facing * 22.0 + right * 35.0, facing * 42.0 + right * 35.0, Color(0.91, 0.66, 0.28, 0.72), 5.0, true)
 	if ward > 0.0:
 		draw_arc(Vector2.ZERO, 38.0, _visual_time * 0.8, _visual_time * 0.8 + PI * 1.62, 34, Color(0.34, 0.84, 0.72, 0.52 * ward / MAX_WARD), 4.0, true)
-	if _state == State.PARRY:
-		var parry_color := Color("f5d263") if is_instance_valid(_readied_parry_source) else accent
-		draw_arc(Vector2.ZERO, 48.0, facing.angle() - 0.86, facing.angle() + 0.86, 28, Color(parry_color, 0.88), 5.0, true)
-		draw_line(facing * 23.0 - right * 27.0, facing * 48.0 + right * 27.0, Color(parry_color, 0.72), 3.0, true)
+	if _state == State.UMBRAL_STEP:
+		var step_direction := velocity.normalized() if not velocity.is_zero_approx() else facing
+		for streak_index: int in 5:
+			var side_offset := right * (-24.0 + float(streak_index) * 12.0)
+			var streak_length := 48.0 + float(streak_index % 2) * 18.0
+			draw_line(side_offset - step_direction * streak_length, side_offset - step_direction * 12.0, Color(0.38, 0.86, 0.76, 0.24 + float(streak_index) * 0.06), 4.0, true)
 	if _state == State.SIGNATURE_CHARGE:
 		_draw_signature_preview(facing, right, accent)
 	if _form_wheel_open:

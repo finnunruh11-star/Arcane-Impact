@@ -138,8 +138,8 @@ func play_effect(effect_id: StringName, at: Vector2, direction: Vector2, size_sc
 			effect.modulate = Color("62d2ba")
 		&"fin_smoke":
 			effect.modulate = Color(0.28, 0.54, 0.42, 0.72)
-		&"fin_parry":
-			effect.modulate = Color("f3d56f")
+		&"fin_step":
+			effect.modulate = Color("70d4c0")
 		&"fin_switch":
 			effect.modulate = Color("dce98c")
 	if effect_id == &"sniff_blessing":
@@ -208,19 +208,6 @@ func play_guard_impact(at: Vector2, direction: Vector2, perfect: bool, power: fl
 		_camera.add_trauma(0.38 if perfect else 0.20)
 	_flash_strength = maxf(_flash_strength, (0.17 if perfect else 0.08) * flash_scale)
 	_start_rumble(0.72 if perfect else 0.38)
-
-
-func play_fin_parry(at: Vector2, direction: Vector2, perfect: bool, power: float) -> void:
-	var strength := clampf(power / 38.0, 0.25, 1.0)
-	VfxCatalog.spawn_world(self, &"fin_parry", at, direction, 0.78 + strength * 0.42, Color("f2d264") if perfect else Color("73c8b7"))
-	VfxCatalog.spawn_world(self, &"fin_cut", at, -direction, 0.74 + strength * 0.30, Color("f7f0ce"))
-	if is_instance_valid(_hit_stop):
-		_hit_stop.request(0.060 if perfect else 0.028)
-	if is_instance_valid(_camera):
-		_camera.add_trauma(0.46 if perfect else 0.18)
-	_flash.color = Color(1.0, 0.88, 0.48, _flash.color.a)
-	_flash_strength = maxf(_flash_strength, (0.19 if perfect else 0.07) * flash_scale)
-	_start_rumble(0.82 if perfect else 0.34)
 
 
 func _process(delta: float) -> void:

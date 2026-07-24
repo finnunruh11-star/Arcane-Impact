@@ -149,7 +149,7 @@ func _run() -> void:
 		&"fin_shadow": 10,
 		&"fin_tool": 7,
 		&"fin_smoke": 31,
-		&"fin_parry": 31,
+		&"fin_step": 10,
 		&"fin_switch": 14,
 	}
 	for effect_id: StringName in fin_effect_specs:
@@ -226,6 +226,15 @@ func _run() -> void:
 		await process_frame
 	_expect(sniff.global_position.x > dash_start_x + 300.0, "charged Thunder Dash traverses its authored distance")
 	_expect(sniff_enemies[2].health < dash_target_before, "Thunder Dash damages an enemy crossed once")
+	sniff.call("_begin_flashstep")
+	_expect(
+		is_equal_approx(sniff.flashstep_cooldown, SniffPlayerScript.FLASHSTEP_COOLDOWN) and sniff.flashstep_cooldown < 1.0,
+		"Flashstep now has a much shorter reusable cooldown"
+	)
+	sniff.set("_state", SniffPlayerScript.State.FREE)
+	sniff.set("_invulnerable_time", 0.0)
+	sniff.call("_set_enemy_phasing", false)
+	(sniff.get("_attack_area") as Area2D).monitoring = false
 
 	sniff.global_position = Vector2(430.0, 360.0)
 	sniff_enemies[2].global_position = Vector2(720.0, 360.0)
@@ -414,16 +423,33 @@ func _run() -> void:
 			break
 	_expect(has_mutivarg_field and fin.mutivarg_cooldown > 0.0, "Mutivarg's Rod deploys a persistent compression field")
 
-	fin.global_position = Vector2(430.0, 360.0)
-	fin_enemy.global_position = Vector2(550.0, 360.0)
+	fin.set("_state", FinPlayerScript.State.FREE)
+	fin.set("_veil_time", 0.0)
+	fin.set("_smoke_veil_time", 0.0)
+	fin.set("_invulnerable_time", 0.0)
+	fin.global_position = Vector2(300.0, 600.0)
+	fin_enemy.global_position = Vector2(390.0, 600.0)
+	fin_enemy.consume_pierce_marks(FinPlayerScript.MAX_PIERCE_MARKS)
+	var step_target_health_before: float = fin_enemy.health
 	fin_enemy.call("_begin_windup")
 	fin.aim_direction = Vector2.RIGHT
-	fin.call("_begin_masterful_parry")
-	_expect(fin.get_readied_parry_target() == fin_enemy, "Masterful Parry reads an enemy's active windup")
-	var parry_health_before: float = fin.health
-	var parried_damage: float = fin.receive_hit(DamagePacketScript.enemy_melee(fin_enemy, 36.0), Vector2.LEFT)
-	_expect(parried_damage == 0.0 and fin.health == parry_health_before, "readied Masterful Parry negates the incoming strike")
-	_expect(fin_enemy.get_pierce_marks() >= 2, "perfect parry turns enemy intent into Pierce Marks")
+	fin.call("_begin_umbral_step")
+	_expect(fin.is_umbral_stepping() and fin.is_concealed(), "Umbral Step makes Fin unseen for its escape window")
+	_expect(fin.collision_mask == 4 and not (fin.get("_attack_area") as Area2D).monitoring, "Umbral Step phases enemy bodies and disables offense")
+	_expect(is_equal_approx(fin.umbral_step_cooldown, FinPlayerScript.UMBRAL_STEP_COOLDOWN), "Umbral Step starts its authored cooldown")
+	Input.action_press(&"move_right")
+	for _frame: int in 14:
+		await physics_frame
+		await process_frame
+	Input.action_release(&"move_right")
+	_expect(fin.global_position.x > fin_enemy.global_position.x + 20.0, "Umbral Step runs through an enemy at high speed")
+	_expect(fin.velocity.length() >= FinPlayerScript.MOVE_SPEED * FinPlayerScript.UMBRAL_STEP_SPEED_MULTIPLIER * 0.95, "Umbral Step grants a large movement-speed boost")
+	_expect(not fin_enemy.is_attack_winding_up(), "unseen Umbral Step interrupts enemy attack acquisition")
+	_expect(fin_enemy.health == step_target_health_before and fin_enemy.get_pierce_marks() == 0, "Umbral Step deals no damage and applies no Pierce Marks")
+	fin.call("_update_state", FinPlayerScript.UMBRAL_STEP_DURATION)
+	_expect(not fin.is_umbral_stepping() and fin.collision_mask == 2 | 4, "Umbral Step restores normal collision when it ends")
+	fin.call("_begin_umbral_step")
+	_expect(not fin.is_umbral_stepping(), "Umbral Step cannot restart during its cooldown")
 
 	var spawned_fin_projectile := false
 	for child: Node in fin_world.get_children():

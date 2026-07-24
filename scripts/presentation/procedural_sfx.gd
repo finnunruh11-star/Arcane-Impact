@@ -182,13 +182,9 @@ func play_cue(cue: StringName, power: float) -> void:
 		&"fin_smoke":
 			_play_one_shot(_void_stream, -8.0, 1.72)
 			_play_one_shot(_release_stream, -13.0, 0.72)
-		&"fin_parry_ready":
-			_play_one_shot(_guard_stream, -11.0, 1.18 + strength * 0.16)
-		&"fin_parry":
-			_play_one_shot(_guard_stream, -5.0, 1.34)
-		&"fin_perfect_parry":
-			_play_one_shot(_guard_stream, -1.0, 1.58)
-			_play_one_shot(_release_stream, -7.0, 1.72)
+		&"fin_umbral_step":
+			_play_one_shot(_void_stream, -4.5, 1.72)
+			_play_one_shot(_release_stream, -9.0, 1.54)
 		&"fin_switch":
 			_play_one_shot(_magic_stream, -8.0, 1.06 + strength * 0.34)
 		&"fin_impact":

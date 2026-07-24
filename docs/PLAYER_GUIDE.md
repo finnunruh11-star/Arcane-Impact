@@ -154,7 +154,7 @@ Recasting replaces the existing Halo.
 
 ### Bastion March
 
-**Input:** Space / Xbox A  
+**Input:** Space / Xbox A
 **Cooldown:** 3.6 seconds
 
 Kat surges 650 pixels per second in the movement direction, or aim direction
@@ -251,7 +251,7 @@ A zero-stack Surge is legal but much weaker. The health cost is nonlethal.
 ### Flashstep
 
 **Input:** Space / Xbox A  
-**Cooldown:** 2.2 seconds
+**Cooldown:** 0.75 seconds
 
 Phases 158 pixels in the movement or aim direction. Sniff is invulnerable for
 0.23 seconds, passes through enemy bodies, and damages every crossed enemy once.
@@ -415,7 +415,7 @@ Dagger, Potions, Smoke Bombs, and the Unreal item Mutivarg's Rod.
 - **Ward:** up to 52 temporary damage absorption. It is spent before health
   and slowly fades. Wave recovery grants 22 Ward.
 - **Pierce Marks:** each enemy can hold up to five for 8 seconds. Fast attacks,
-  traps, fields, and parries prepare Marks; Mind Pierce and Crossbow bolts
+  traps, and fields prepare Marks; Mind Pierce and Crossbow bolts
   consume them for damage or control.
 - **Supplies:** three Throwing Daggers, three Potions, and two Smoke Bombs.
   Charges regenerate one at a time even while their form is stowed.
@@ -427,19 +427,20 @@ Arbalest, Down for Huntsman, or Left for Artificer. Fin moves slowly while the
 selector is open. Switching away from Nightblade ends Umbral Veil; reloads,
 cooldowns, and supplies otherwise persist.
 
-### Masterful Parry
+### Umbral Step
 
 **Input:** Space / Xbox A
+**Cooldown:** 4 seconds
 
-Masterful Parry is shared by every form and covers a 156-degree frontal arc.
-A hit during the first 0.18 seconds is perfect. Starting the parry while a
-nearby enemy is visibly winding up reads that authoritative intent and keeps
-the perfect response valid through the complete 0.32-second stance.
+Umbral Step is Fin's shared defensive escape in every form. For 1.25 seconds,
+Fin becomes unseen, moves at 190% of base speed under full directional control,
+and passes through enemy bodies. Activation includes 0.16 seconds of protection
+so Fin can break away from immediate contact. Enemies lose active windups,
+cannot acquire new attacks, and pursue much more slowly while Fin is unseen.
 
-A perfect parry negates health damage, restores Resolve, cancels and locks the
-attacker for 0.68 seconds, applies two Pierce Marks, and steps Fin behind the
-attacker. A late frontal parry takes 22% health damage and applies one Mark.
-Rear attacks bypass the parry.
+Umbral Step disables Fin's attack sensor for the entire escape. It deals no
+damage, applies no Pierce Marks or control, and cannot be used as an offensive
+traversal attack.
 
 ### Nightblade
 
@@ -544,8 +545,8 @@ every 10 seconds.
 
 1. Use Huntsman arrows, traps, Throwing Daggers, or Artificer fields to prepare
   several Pierce Marks without overcommitting.
-2. Read a telegraph with Masterful Parry to cancel intent, add two Marks, and
-  appear behind the attacker.
+2. Use Umbral Step to become unseen and run through enemies when pressure closes
+  off a safe route; it is strictly an escape and creates no Marks.
 3. Enter Nightblade under Veil and cash out with a backstabbed Mind Pierce, or
   draw Arbalest and spend Marks on a loaded Crossbow shot.
 4. Stow Arbalest during reload and use another complete form instead of waiting.

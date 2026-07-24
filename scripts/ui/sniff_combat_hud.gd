@@ -114,7 +114,7 @@ func _process(delta: float) -> void:
 	_update_slot(&"dash", 0.0, 1.0, "SPEND 0-3")
 	_update_slot(&"blessing", _player.blessing_cooldown, 8.0, "8% HP")
 	_update_slot(&"surge", _player.surge_cooldown, 7.5, "10% HP")
-	_update_slot(&"step", _player.flashstep_cooldown, 2.2, "READY")
+	_update_slot(&"step", _player.flashstep_cooldown, SniffPlayer.FLASHSTEP_COOLDOWN, "READY")
 	_update_slot(&"ultimate", _player.ultimate_cooldown, 20.0, "15% HP")
 	if _player.is_dash_charging():
 		var data: Dictionary = _slot_data[&"dash"]

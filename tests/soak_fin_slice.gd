@@ -23,17 +23,15 @@ func _run_soak() -> void:
 			durable_enemy.health = 3000.0
 			durable_enemy.max_resolve = 900.0
 			durable_enemy.resolve = 900.0
-	var metrics := {&"hits": 0, &"incoming": 0, &"parries": 0, &"forms": {}}
+	var metrics := {&"hits": 0, &"incoming": 0, &"steps": 0, &"forms": {}}
 	player.combat_impact.connect(func(_at: Vector2, _direction: Vector2, _packet: DamagePacket, _intensity: float) -> void:
 		metrics[&"hits"] = int(metrics[&"hits"]) + 1
 	)
 	player.audio_requested.connect(func(cue: StringName, _power: float) -> void:
 		if cue == &"fin_hurt":
 			metrics[&"incoming"] = int(metrics[&"incoming"]) + 1
-	)
-	player.parry_impact.connect(func(_at: Vector2, _direction: Vector2, perfect: bool, _power: float) -> void:
-		if perfect:
-			metrics[&"parries"] = int(metrics[&"parries"]) + 1
+		elif cue == &"fin_umbral_step":
+			metrics[&"steps"] = int(metrics[&"steps"]) + 1
 	)
 
 	for frame_index: int in 900:
@@ -95,11 +93,12 @@ func _run_soak() -> void:
 			740:
 				_reset_action_state(player)
 				if is_instance_valid(nearest):
-					_place_target(nearest, player, 112.0)
-					nearest.set("_facing", -player.aim_direction)
+					_place_target(nearest, player, 92.0)
 					nearest.call("_begin_windup")
-					player.call("_begin_masterful_parry")
-					player.receive_hit(DamagePacket.enemy_melee(nearest, 32.0), -player.aim_direction)
+				Input.action_press(&"move_right")
+				player.call("_begin_umbral_step")
+			790:
+				Input.action_release(&"move_right")
 			810:
 				_reset_action_state(player)
 				player.set("_invulnerable_time", 0.0)
@@ -119,18 +118,18 @@ func _run_soak() -> void:
 	if (metrics[&"forms"] as Dictionary).size() != FinPlayer.Form.size():
 		push_error("Fin soak did not visit all four forms.")
 		failed = true
-	if int(metrics[&"parries"]) < 1:
-		push_error("Fin soak did not resolve a perfect Masterful Parry.")
+	if int(metrics[&"steps"]) < 1:
+		push_error("Fin soak did not activate Umbral Step.")
 		failed = true
 	if int(metrics[&"incoming"]) < 1:
 		push_error("Fin soak did not observe incoming unguarded damage.")
 		failed = true
 
-	print("SOAK %s: %d Fin impacts; %d forms; %d perfect parries; %d enemy hits." % [
+	print("SOAK %s: %d Fin impacts; %d forms; %d Umbral Steps; %d enemy hits." % [
 		"FAIL" if failed else "PASS",
 		int(metrics[&"hits"]),
 		(metrics[&"forms"] as Dictionary).size(),
-		int(metrics[&"parries"]),
+		int(metrics[&"steps"]),
 		int(metrics[&"incoming"]),
 	])
 	scene.queue_free()
@@ -150,6 +149,7 @@ func _reset_action_state(player: FinPlayer) -> void:
 	player.set("_state", FinPlayer.State.FREE)
 	player.set("_state_time", 0.0)
 	player.set("_invulnerable_time", 0.0)
+	player.set("umbral_step_cooldown", 0.0)
 	player.collision_mask = 2 | 4
 
 

@@ -107,7 +107,7 @@ func _ready() -> void:
 		[&"signature", "MIND PIERCE", "RMB", "LT"],
 		[&"ability_1", "UMBRAL VEIL", "Q", "RB"],
 		[&"ability_2", "SHADOW LUNGE", "E", "LB"],
-		[&"parry", "MASTERFUL PARRY", "SPACE", "A"],
+		[&"step", "UMBRAL STEP", "SPACE", "A"],
 		[&"ultimate", "CHANGE FORM", "R", "Y"],
 	]
 	var slot_width := 178.0
@@ -189,7 +189,7 @@ func _update_ability_slots() -> void:
 			_update_slot(&"signature", _player.mutivarg_cooldown, 8.0, "READY")
 			_update_slot(&"ability_1", 0.0 if _player.get_potion_count() > 0 else FinPlayer.POTION_CHARGE_TIME, FinPlayer.POTION_CHARGE_TIME, "%d/3 %s" % [_player.get_potion_count(), _player.get_last_potion_label()])
 			_update_slot(&"ability_2", 0.0 if _player.get_smoke_bomb_count() > 0 else FinPlayer.SMOKE_CHARGE_TIME, FinPlayer.SMOKE_CHARGE_TIME, "%d/2" % _player.get_smoke_bomb_count())
-	_update_slot(&"parry", 0.0, 1.0, "READ INTENT")
+	_update_slot(&"step", _player.umbral_step_cooldown, FinPlayer.UMBRAL_STEP_COOLDOWN, "ESCAPE")
 	_update_slot(&"ultimate", 0.0, 1.0, "4 FORMS")
 	if _player.get_signature_charge_ratio() > 0.0:
 		var data: Dictionary = _slot_data[&"signature"]
@@ -216,7 +216,7 @@ func _refresh_form() -> void:
 		var label := _form_tabs[form_index].get_child(0) as Label
 		label.add_theme_color_override(&"font_color", Color("f3efdf") if selected else Color("718986"))
 	for slot_id: Variant in _slot_data:
-		if slot_id == &"ultimate" or slot_id == &"parry":
+		if slot_id == &"ultimate" or slot_id == &"step":
 			continue
 		var slot_style := (_slot_data[slot_id] as Dictionary)[&"panel_style"] as StyleBoxFlat
 		slot_style.border_color = Color(accent, 0.74)
