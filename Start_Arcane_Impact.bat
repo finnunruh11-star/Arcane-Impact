@@ -2,9 +2,10 @@
 setlocal
 
 set "PROJECT_DIR=%~dp0"
+set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
 set "GODOT_EXE="
 
-if not exist "%PROJECT_DIR%project.godot" (
+if not exist "%PROJECT_DIR%\project.godot" (
     echo Arcane Impact could not find project.godot next to this launcher.
     echo Keep Start_Arcane_Impact.bat in the ARCANE_IMPACT project folder.
     pause
@@ -45,5 +46,26 @@ if /i "%~1"=="--check" (
     exit /b 0
 )
 
-start "Arcane Impact" /D "%PROJECT_DIR%" "%GODOT_EXE%" --path "%PROJECT_DIR%"
-exit /b 0
+if /i "%~1"=="--smoke" (
+    "%GODOT_EXE%" --headless --path "%PROJECT_DIR%" --quit-after 3
+    if errorlevel 1 (
+        echo.
+        echo Arcane Impact failed its startup test.
+        exit /b 1
+    )
+    echo Arcane Impact startup test passed.
+    exit /b 0
+)
+
+cd /d "%PROJECT_DIR%"
+"%GODOT_EXE%" --path "%PROJECT_DIR%"
+set "GAME_EXIT=%ERRORLEVEL%"
+
+if not "%GAME_EXIT%"=="0" (
+    echo.
+    echo Arcane Impact could not start. Godot exited with code %GAME_EXIT%.
+    echo See docs\PLAYER_GUIDE.md or run this file from a terminal for details.
+    pause
+)
+
+exit /b %GAME_EXIT%
