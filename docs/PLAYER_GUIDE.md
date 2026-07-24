@@ -6,6 +6,18 @@ Double-click `Start_Arcane_Impact.bat` in the project folder. The launcher finds
 Godot automatically and opens the roster. If Godot is missing, it displays the
 WinGet installation command instead of closing silently.
 
+On every start, the launcher briefly opens Godot in headless editor mode to
+build or refresh `.godot/global_script_class_cache.cfg` and imported assets.
+The `.godot` directory is machine-generated and excluded from Git, so this
+step is required after a fresh clone and prevents `Identifier not declared`
+parse errors in the roster. Do not run `godot --path .` first on a fresh clone;
+use the launcher, or run these commands from the project directory:
+
+```powershell
+godot --headless --editor --path . --quit
+godot --path .
+```
+
 On the roster, select Kat or Sniff with A/D, the arrow keys, mouse, number keys
 1/2, the left stick, or the D-pad. Deploy with Enter, Space, F, a character
 button, Xbox A, or Xbox X.

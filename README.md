@@ -72,7 +72,9 @@ Both slices include:
 
 On Windows, double-click [Start_Arcane_Impact.bat](Start_Arcane_Impact.bat). It finds Godot on `PATH`,
 in the project folder, or in the standard WinGet package directory and starts
-the correct project automatically.
+the correct project automatically. The launcher first refreshes Godot's local
+script-class cache and imported assets, which are intentionally not stored in
+Git. This makes the first run after cloning or pulling work on a new device.
 
 You can also open [project.godot](project.godot) in Godot 4.7.1 and press F5
 to run the project.
@@ -86,6 +88,7 @@ combat loops for Kat and Sniff.
 If `godot` is available on `PATH`, the command-line equivalent is:
 
 ```powershell
+godot --headless --editor --path . --quit
 godot --path .
 ```
 

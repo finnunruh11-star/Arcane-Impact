@@ -46,6 +46,16 @@ if /i "%~1"=="--check" (
     exit /b 0
 )
 
+echo Preparing Arcane Impact...
+"%GODOT_EXE%" --headless --editor --path "%PROJECT_DIR%" --quit
+if errorlevel 1 (
+    echo.
+    echo Arcane Impact could not import its scripts and assets.
+    echo Keep this window open and report the errors shown above.
+    pause
+    exit /b 1
+)
+
 if /i "%~1"=="--smoke" (
     "%GODOT_EXE%" --headless --path "%PROJECT_DIR%" --quit-after 3
     if errorlevel 1 (
