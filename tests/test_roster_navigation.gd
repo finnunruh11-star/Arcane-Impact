@@ -9,13 +9,19 @@ func _init() -> void:
 
 
 func _run() -> void:
+	if not await _deploy_and_expect(3, "FinCombatSlice"):
+		quit(1)
+		return
+	if not await _deploy_and_expect(2, "NadCombatSlice"):
+		quit(1)
+		return
 	if not await _deploy_and_expect(1, "SniffCombatSlice"):
 		quit(1)
 		return
 	if not await _deploy_and_expect(0, "KatCombatSlice"):
 		quit(1)
 		return
-	print("NAVIGATION PASS: roster deploys Sniff and Kat.")
+	print("NAVIGATION PASS: roster deploys Fin, Nad, Sniff, and Kat.")
 	if is_instance_valid(current_scene):
 		current_scene.queue_free()
 	for _frame: int in 8:

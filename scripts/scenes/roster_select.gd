@@ -4,7 +4,13 @@ extends Node2D
 const HERO_SCENES := [
 	"res://scenes/arena/kat_combat_slice.tscn",
 	"res://scenes/arena/sniff_combat_slice.tscn",
+	"res://scenes/arena/nad_combat_slice.tscn",
+	"res://scenes/arena/fin_combat_slice.tscn",
 ]
+const HERO_CENTERS := [Vector2(172.0, 320.0), Vector2(484.0, 320.0), Vector2(796.0, 320.0), Vector2(1108.0, 320.0)]
+const HERO_ACCENTS := [Color("cf5268"), Color("42d7ed"), Color("78d6a6"), Color("dfbd58")]
+const HERO_CARD_POSITIONS := [Vector2(24.0, 126.0), Vector2(336.0, 126.0), Vector2(648.0, 126.0), Vector2(960.0, 126.0)]
+const HERO_CARD_SIZE := Vector2(296.0, 514.0)
 
 var _selected := 0
 var _transitioning := false
@@ -44,9 +50,9 @@ func _process(delta: float) -> void:
 			get_tree().change_scene_to_file(HERO_SCENES[_selected])
 		return
 	if Input.is_action_just_pressed(&"move_left") or Input.is_action_just_pressed(&"ui_left"):
-		_select(0)
+		_select(posmod(_selected - 1, HERO_SCENES.size()))
 	elif Input.is_action_just_pressed(&"move_right") or Input.is_action_just_pressed(&"ui_right"):
-		_select(1)
+		_select((_selected + 1) % HERO_SCENES.size())
 	if Input.is_action_just_pressed(&"ui_accept") or Input.is_action_just_pressed(&"interact"):
 		_deploy(_selected)
 	queue_redraw()
@@ -60,6 +66,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_deploy(0)
 	elif key_event.physical_keycode == KEY_2:
 		_deploy(1)
+	elif key_event.physical_keycode == KEY_3:
+		_deploy(2)
+	elif key_event.physical_keycode == KEY_4:
+		_deploy(3)
 
 
 func _build_background() -> void:
@@ -72,43 +82,64 @@ func _build_background() -> void:
 	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	background_layer.add_child(wash)
 
-	var left_band := ColorRect.new()
-	left_band.position = Vector2(78.0, 126.0)
-	left_band.size = Vector2(552.0, 514.0)
-	left_band.color = Color(0.18, 0.025, 0.055, 0.22)
-	left_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	background_layer.add_child(left_band)
-	var right_band := ColorRect.new()
-	right_band.position = Vector2(650.0, 126.0)
-	right_band.size = Vector2(552.0, 514.0)
-	right_band.color = Color(0.02, 0.20, 0.25, 0.18)
-	right_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	background_layer.add_child(right_band)
+	var bands := [
+		[HERO_CARD_POSITIONS[0], Color(0.18, 0.025, 0.055, 0.22)],
+		[HERO_CARD_POSITIONS[1], Color(0.02, 0.20, 0.25, 0.18)],
+		[HERO_CARD_POSITIONS[2], Color(0.06, 0.22, 0.16, 0.20)],
+		[HERO_CARD_POSITIONS[3], Color(0.22, 0.15, 0.035, 0.19)],
+	]
+	for band_data: Array in bands:
+		var band := ColorRect.new()
+		band.position = band_data[0]
+		band.size = HERO_CARD_SIZE
+		band.color = band_data[1]
+		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		background_layer.add_child(band)
 
 
 func _build_hero_previews() -> void:
 	var kat := KatPlayer.new()
 	kat.name = "KatPreview"
 	kat.process_mode = Node.PROCESS_MODE_DISABLED
-	kat.position = Vector2(354.0, 330.0)
+	kat.position = HERO_CENTERS[0]
 	kat.aim_direction = Vector2.RIGHT
-	kat.scale = Vector2.ONE * 2.05
+	kat.scale = Vector2.ONE * 1.72
 	add_child(kat)
-	var kat_aura := VfxCatalog.spawn_attached(kat, &"kat_absorb", Vector2.ZERO, 0.72, Color(0.90, 0.55, 0.72, 0.38), true)
+	var kat_aura := VfxCatalog.spawn_attached(kat, &"kat_absorb", Vector2.ZERO, 0.62, Color(0.90, 0.55, 0.72, 0.38), true)
 	kat_aura.z_index = -1
 	_heroes.append(kat)
 
 	var sniff := SniffPlayer.new()
 	sniff.name = "SniffPreview"
 	sniff.process_mode = Node.PROCESS_MODE_DISABLED
-	sniff.position = Vector2(926.0, 330.0)
+	sniff.position = HERO_CENTERS[1]
 	sniff.aim_direction = Vector2.LEFT
 	sniff.blessing = SniffPlayer.MAX_BLESSING
-	sniff.scale = Vector2.ONE * 2.05
+	sniff.scale = Vector2.ONE * 1.72
 	add_child(sniff)
-	var sniff_aura := VfxCatalog.spawn_attached(sniff, &"sniff_blessing", Vector2.ZERO, 0.78, Color(0.68, 0.92, 1.0, 0.58), true)
+	var sniff_aura := VfxCatalog.spawn_attached(sniff, &"sniff_blessing", Vector2.ZERO, 0.68, Color(0.68, 0.92, 1.0, 0.58), true)
 	sniff_aura.z_index = -1
 	_heroes.append(sniff)
+
+	var nad := NadPlayer.new()
+	nad.name = "NadPreview"
+	nad.process_mode = Node.PROCESS_MODE_DISABLED
+	nad.position = HERO_CENTERS[2]
+	nad.aim_direction = Vector2.LEFT
+	nad.scale = Vector2.ONE * 1.72
+	add_child(nad)
+	_heroes.append(nad)
+
+	var fin := FinPlayer.new()
+	fin.name = "FinPreview"
+	fin.process_mode = Node.PROCESS_MODE_DISABLED
+	fin.position = HERO_CENTERS[3]
+	fin.aim_direction = Vector2.LEFT
+	fin.scale = Vector2.ONE * 1.62
+	add_child(fin)
+	var fin_aura := VfxCatalog.spawn_attached(fin, &"fin_shadow", Vector2.ZERO, 0.58, Color(0.34, 0.72, 0.64, 0.38), true)
+	fin_aura.z_index = -1
+	_heroes.append(fin)
 
 
 func _build_interface() -> void:
@@ -124,24 +155,25 @@ func _build_interface() -> void:
 	root.add_child(_make_label("CHOOSE YOUR CATALYST", Vector2(0.0, 70.0), Vector2(1280.0, 28.0), 14, Color("8aa6a7"), HORIZONTAL_ALIGNMENT_CENTER))
 
 	var hero_data := [
-		[Vector2(78.0, 126.0), "KAT", "VAMPIRIC BULWARK", "GUARD / DRAIN / COMMAND", Color("cf5268")],
-		[Vector2(650.0, 126.0), "SNIFF", "VOLTAIC GAMBLER", "CHAIN / WAGER / DETONATE", Color("42d7ed")],
+		[HERO_CARD_POSITIONS[0], "KAT", "VAMPIRIC BULWARK", "GUARD / DRAIN / COMMAND", HERO_ACCENTS[0], "GRAVEBELL  GREATSHIELD  LEECH CHOIR\nMOURNING HALO  BASTION MARCH  BLACK COMMUNION"],
+		[HERO_CARD_POSITIONS[1], "SNIFF", "VOLTAIC GAMBLER", "CHAIN / WAGER / DETONATE", HERO_ACCENTS[1], "LIGHTNING DART  THUNDER DASH  ROARING BLESSING\nEXPLOSIVE SURGE  FLASHSTEP  DIVINE ANNIHILATION"],
+		[HERO_CARD_POSITIONS[2], "NAD", "ELDRITCH TACTICIAN", "LOCK / ANCHOR / COLLAPSE", HERO_ACCENTS[2], "FORESEE  ELDRITCH MANTLE  TERRAIN ANCHOR\nMENTAL CASCADE  FOLD SPACE  ARCANE CONDUIT"],
+		[HERO_CARD_POSITIONS[3], "FIN", "SHADOW ARTIFICER", "SWITCH / PREPARE / EXPLOIT", HERO_ACCENTS[3], "NIGHTBLADE  ARBALEST  HUNTSMAN\nMUTIVARG'S ROD  POTIONS  SMOKE BOMBS"],
 	]
 	for index: int in hero_data.size():
 		var data: Array = hero_data[index]
 		var accent: Color = data[4]
-		var panel := _make_panel(data[0], Vector2(552.0, 514.0), Color(0.012, 0.025, 0.033, 0.72), accent)
+		var panel := _make_panel(data[0], HERO_CARD_SIZE, Color(0.012, 0.025, 0.033, 0.72), accent)
 		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		root.add_child(panel)
 		_panels.append(panel)
-		panel.add_child(_make_label(String(data[1]), Vector2(28.0, 24.0), Vector2(240.0, 42.0), 31, Color("f6e4bd")))
-		panel.add_child(_make_label(String(data[2]), Vector2(28.0, 66.0), Vector2(330.0, 25.0), 14, accent))
-		panel.add_child(_make_label(String(data[3]), Vector2(28.0, 340.0), Vector2(496.0, 26.0), 14, Color("b7ccca"), HORIZONTAL_ALIGNMENT_CENTER))
-		var ability_text := "GRAVEBELL   GREATSHIELD   LEECH CHOIR\nMOURNING HALO   BASTION MARCH   BLACK COMMUNION" if index == 0 else "LIGHTNING DART   THUNDER DASH   ROARING BLESSING\nEXPLOSIVE SURGE   FLASHSTEP   DIVINE ANNIHILATION"
-		var abilities := _make_label(ability_text, Vector2(24.0, 378.0), Vector2(504.0, 52.0), 11, Color("81999b"), HORIZONTAL_ALIGNMENT_CENTER)
+		panel.add_child(_make_label(String(data[1]), Vector2(24.0, 24.0), Vector2(180.0, 42.0), 29, Color("f6e4bd")))
+		panel.add_child(_make_label(String(data[2]), Vector2(24.0, 66.0), Vector2(248.0, 25.0), 12, accent))
+		panel.add_child(_make_label(String(data[3]), Vector2(14.0, 340.0), Vector2(268.0, 26.0), 10, Color("b7ccca"), HORIZONTAL_ALIGNMENT_CENTER))
+		var abilities := _make_label(String(data[5]), Vector2(14.0, 378.0), Vector2(268.0, 52.0), 8, Color("81999b"), HORIZONTAL_ALIGNMENT_CENTER)
 		abilities.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		panel.add_child(abilities)
-		var button := _make_button(Vector2(154.0, 446.0), Vector2(244.0, 44.0), "DEPLOY %s" % String(data[1]), accent)
+		var button := _make_button(Vector2(46.0, 446.0), Vector2(204.0, 44.0), "DEPLOY %s" % String(data[1]), accent)
 		button.mouse_entered.connect(func() -> void: _select(index))
 		button.pressed.connect(func() -> void: _deploy(index))
 		panel.add_child(button)
@@ -184,8 +216,8 @@ func _refresh_selection() -> void:
 
 
 func _draw() -> void:
-	var center := Vector2(354.0, 330.0) if _selected == 0 else Vector2(926.0, 330.0)
-	var accent := Color("cf5268") if _selected == 0 else Color("42d7ed")
+	var center: Vector2 = HERO_CENTERS[_selected]
+	var accent: Color = HERO_ACCENTS[_selected]
 	var pulse := 0.82 + sin(Time.get_ticks_msec() * 0.005) * 0.08
 	draw_arc(center, 92.0 * pulse, 0.0, TAU, 72, Color(accent, 0.52), 3.0, true)
 	draw_arc(center, 112.0 * pulse, -0.72, 0.72, 32, Color(accent, 0.22), 7.0, true)

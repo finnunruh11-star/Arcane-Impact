@@ -76,12 +76,22 @@ static func _build(effect_id: StringName, loop: bool) -> PixelSheetEffect:
 			effect.configure(SNIFF_SURGE, Vector2i(96, 96), 15.0, loop)
 		&"sniff_dash":
 			effect.configure(SNIFF_DASH, Vector2i(96, 96), 15.0, loop)
+		&"fin_cut", &"fin_shot":
+			effect.configure(KAT_IMPACT, Vector2i(80, 80), 15.0, loop)
+		&"fin_shadow":
+			effect.configure(SNIFF_DASH, Vector2i(96, 96), 15.0, loop)
+		&"fin_tool":
+			effect.configure(SNIFF_SURGE, Vector2i(96, 96), 15.0, loop)
+		&"fin_smoke", &"fin_parry":
+			effect.configure(KAT_ABSORB, Vector2i(128, 128), 15.0, loop)
+		&"fin_switch":
+			effect.configure(SNIFF_BLESSING, Vector2i(64, 64), 15.0, loop)
 		_:
 			push_error("Unknown VFX catalog entry: %s" % effect_id)
 	return effect
 
 
 static func _rotation_for(effect_id: StringName, direction: Vector2) -> float:
-	if effect_id == &"kat_impact" and not direction.is_zero_approx():
+	if effect_id in [&"kat_impact", &"fin_cut", &"fin_shot"] and not direction.is_zero_approx():
 		return direction.angle() + PI * 0.5
 	return 0.0

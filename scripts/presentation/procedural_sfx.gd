@@ -10,6 +10,8 @@ var _magic_stream: AudioStreamWAV
 var _guard_stream: AudioStreamWAV
 var _electric_stream: AudioStreamWAV
 var _thunder_stream: AudioStreamWAV
+var _mental_stream: AudioStreamWAV
+var _void_stream: AudioStreamWAV
 
 
 func _ready() -> void:
@@ -20,6 +22,8 @@ func _ready() -> void:
 	_guard_stream = _build_guard_stream()
 	_electric_stream = _build_electric_stream()
 	_thunder_stream = _build_thunder_stream()
+	_mental_stream = _build_mental_stream()
+	_void_stream = _build_void_stream()
 
 
 func play_release(power: float) -> void:
@@ -99,6 +103,98 @@ func play_cue(cue: StringName, power: float) -> void:
 			_play_one_shot(_electric_stream, -9.0, 1.92)
 		&"sniff_hurt":
 			_play_one_shot(_impact_stream, lerpf(-14.0, -8.0, strength), 1.36)
+		&"nad_probe_charge":
+			_play_one_shot(_mental_stream, -12.0, 1.36)
+		&"nad_probe":
+			_play_one_shot(_mental_stream, lerpf(-10.0, -5.0, strength), 1.58)
+		&"nad_impact":
+			_play_one_shot(_mental_stream, lerpf(-13.0, -7.0, strength), 0.82)
+		&"nad_mantle_charge":
+			_play_one_shot(_void_stream, -7.0, 0.72)
+		&"nad_mantle":
+			_play_one_shot(_void_stream, lerpf(-8.0, -2.0, strength), 0.88)
+			_play_one_shot(_mental_stream, -7.0, 0.66)
+		&"nad_anchor_place":
+			_play_one_shot(_mental_stream, -8.0, 0.98 + strength * 0.16)
+		&"nad_anchor_detonate":
+			_play_one_shot(_void_stream, -1.5, 0.54)
+			_play_one_shot(_impact_stream, -4.0, 0.72)
+		&"nad_cascade_charge":
+			_play_one_shot(_mental_stream, -7.5, 0.64)
+		&"nad_cascade":
+			_play_one_shot(_void_stream, -3.0, 1.12)
+			_play_one_shot(_mental_stream, -5.0, 0.78)
+		&"nad_fold", &"nad_phase":
+			_play_one_shot(_void_stream, -6.0, 1.54)
+		&"nad_ultimate_charge":
+			_play_one_shot(_void_stream, -0.5, 0.40)
+			_play_one_shot(_mental_stream, -4.0, 0.52)
+		&"nad_ultimate":
+			_play_one_shot(_void_stream, 0.0, 0.46)
+			_play_one_shot(_impact_stream, -1.0, 0.58)
+			_play_one_shot(_mental_stream, -2.0, 0.62)
+		&"nad_hurt":
+			_play_one_shot(_impact_stream, lerpf(-14.0, -8.0, strength), 0.96)
+		&"fin_dagger":
+			_play_one_shot(_release_stream, lerpf(-13.0, -7.0, strength), 1.48 + strength * 0.18)
+		&"fin_mind_pierce":
+			_play_one_shot(_release_stream, lerpf(-8.0, -2.0, strength), 1.22)
+			_play_one_shot(_void_stream, -9.0, 1.36)
+		&"fin_crossbow_brace":
+			_play_one_shot(_guard_stream, -10.0, 0.78 + strength * 0.10)
+		&"fin_crossbow":
+			_play_one_shot(_release_stream, -3.5, 0.72)
+			_play_one_shot(_impact_stream, -8.0, 1.28)
+		&"fin_breach":
+			_play_one_shot(_release_stream, lerpf(-3.0, 0.0, strength), 0.58)
+			_play_one_shot(_impact_stream, -1.0, 0.66)
+			_play_one_shot(_guard_stream, -5.0, 0.72)
+		&"fin_reload":
+			_play_one_shot(_guard_stream, -10.0, 1.34)
+		&"fin_quick_crank":
+			_play_one_shot(_guard_stream, -7.0, 1.52)
+			_play_one_shot(_release_stream, -12.0, 1.82)
+		&"fin_empty":
+			_play_one_shot(_guard_stream, -15.0, 1.72)
+		&"fin_bow_draw":
+			_play_one_shot(_release_stream, -13.0, 0.66 + strength * 0.08)
+		&"fin_bow":
+			_play_one_shot(_release_stream, lerpf(-10.0, -4.0, strength), 1.62)
+		&"fin_rod":
+			_play_one_shot(_magic_stream, lerpf(-13.0, -7.0, strength), 1.42)
+		&"fin_mutivarg_charge":
+			_play_one_shot(_void_stream, -8.0, 0.58)
+			_play_one_shot(_magic_stream, -11.0, 0.76)
+		&"fin_mutivarg":
+			_play_one_shot(_void_stream, lerpf(-5.0, -1.0, strength), 0.68)
+			_play_one_shot(_guard_stream, -8.0, 0.62)
+		&"fin_veil", &"fin_lunge", &"fin_phase":
+			_play_one_shot(_void_stream, -8.0, 1.46 + strength * 0.16)
+		&"fin_trap":
+			_play_one_shot(_magic_stream, -11.0, 0.86)
+		&"fin_trap_trigger":
+			_play_one_shot(_guard_stream, -5.0, 1.12)
+			_play_one_shot(_void_stream, -9.0, 1.26)
+		&"fin_throw":
+			_play_one_shot(_release_stream, -9.0, 1.78)
+		&"fin_potion":
+			_play_one_shot(_magic_stream, -9.0, 1.18 + strength * 0.24)
+		&"fin_smoke":
+			_play_one_shot(_void_stream, -8.0, 1.72)
+			_play_one_shot(_release_stream, -13.0, 0.72)
+		&"fin_parry_ready":
+			_play_one_shot(_guard_stream, -11.0, 1.18 + strength * 0.16)
+		&"fin_parry":
+			_play_one_shot(_guard_stream, -5.0, 1.34)
+		&"fin_perfect_parry":
+			_play_one_shot(_guard_stream, -1.0, 1.58)
+			_play_one_shot(_release_stream, -7.0, 1.72)
+		&"fin_switch":
+			_play_one_shot(_magic_stream, -8.0, 1.06 + strength * 0.34)
+		&"fin_impact":
+			_play_one_shot(_impact_stream, lerpf(-13.0, -5.0, strength), 1.14)
+		&"fin_hurt":
+			_play_one_shot(_impact_stream, lerpf(-14.0, -8.0, strength), 1.24)
 		&"enemy_windup":
 			_play_one_shot(_magic_stream, -13.0, 0.82 + strength * 0.12)
 		&"enemy_swing":
@@ -215,6 +311,42 @@ func _build_thunder_stream() -> AudioStreamWAV:
 		var body := sin(TAU * 104.0 * time) * exp(-time * 5.2) * 0.34
 		var crack := sin(float(index) * 14.193) * exp(-time * 28.0) * 0.31
 		var sample := (sub + body + crack) * envelope
+		data.encode_s16(index * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
+	return _make_stream(data)
+
+
+func _build_mental_stream() -> AudioStreamWAV:
+	var duration := 0.38
+	var sample_count := int(duration * MIX_RATE)
+	var data := PackedByteArray()
+	data.resize(sample_count * 2)
+	for index: int in sample_count:
+		var time := float(index) / float(MIX_RATE)
+		var progress := time / duration
+		var envelope := sin(PI * clampf(progress, 0.0, 1.0)) * pow(1.0 - progress, 0.32)
+		var carrier := 210.0 + sin(time * 37.0) * 46.0 + progress * 390.0
+		var phase := TAU * carrier * time
+		var thought := sin(phase + sin(phase * 0.23) * 2.4) * 0.44
+		var overtone := sin(phase * 2.47 + sin(time * 71.0)) * 0.18
+		var sample := (thought + overtone) * envelope
+		data.encode_s16(index * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
+	return _make_stream(data)
+
+
+func _build_void_stream() -> AudioStreamWAV:
+	var duration := 0.58
+	var sample_count := int(duration * MIX_RATE)
+	var data := PackedByteArray()
+	data.resize(sample_count * 2)
+	for index: int in sample_count:
+		var time := float(index) / float(MIX_RATE)
+		var progress := time / duration
+		var envelope := sin(PI * clampf(progress, 0.0, 1.0)) * (0.74 + progress * 0.26)
+		var falling_frequency := lerpf(410.0, 48.0, pow(progress, 0.72))
+		var hollow := sin(TAU * falling_frequency * time + sin(time * 19.0) * 3.0) * 0.42
+		var sub := sin(TAU * (68.0 - progress * 22.0) * time) * progress * 0.48
+		var grain := sin(float(index) * 5.917 + sin(float(index) * 0.031) * 5.0) * 0.10
+		var sample := (hollow + sub + grain) * envelope
 		data.encode_s16(index * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
 	return _make_stream(data)
 

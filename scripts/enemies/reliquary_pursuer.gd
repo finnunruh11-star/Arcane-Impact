@@ -42,6 +42,13 @@ var _hit_flash := 0.0
 var _curse_stacks := 0
 var _curse_remaining := 0.0
 var _curse_tick := 1.0
+var _control_lock_remaining := 0.0
+var _mental_focus := 0
+var _focus_remaining := 0.0
+var _slow_scale := 1.0
+var _slow_remaining := 0.0
+var _pierce_marks := 0
+var _pierce_mark_remaining := 0.0
 var _death_timer := 0.0
 var _telegraph_time := 0.0
 
@@ -123,6 +130,7 @@ func _physics_process(delta: float) -> void:
 	_hit_flash = maxf(0.0, _hit_flash - delta * 7.0)
 	_telegraph_time += delta
 	_tick_curse(delta)
+	_tick_external_control(delta)
 	if _state == State.DEAD:
 		_update_death(delta)
 		queue_redraw()
@@ -131,14 +139,25 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		queue_redraw()
 		return
+	var player_concealed := _player.has_method(&"is_concealed") and bool(_player.call(&"is_concealed"))
+	if player_concealed and _state == State.WINDUP:
+		_attack_area.monitoring = false
+		_attack_hit = true
+		_state = State.CHASE
+		_state_time = 0.0
+	if _control_lock_remaining > 0.0:
+		velocity = Vector2.ZERO
+		_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, delta * 1800.0)
+		queue_redraw()
+		return
 
 	var to_player := _player.global_position - global_position
 	if not to_player.is_zero_approx():
 		_facing = to_player.normalized()
 	match _state:
 		State.CHASE:
-			velocity = _facing * move_speed + _knockback_velocity
-			if to_player.length() <= ATTACK_REACH * 0.88:
+			velocity = _facing * move_speed * _slow_scale * (0.34 if player_concealed else 1.0) + _knockback_velocity
+			if not player_concealed and to_player.length() <= ATTACK_REACH * 0.88:
 				_begin_windup()
 		State.WINDUP:
 			velocity = _knockback_velocity * 0.25
@@ -207,7 +226,10 @@ func receive_hit(packet: DamagePacket, direction: Vector2) -> float:
 	if _state == State.DEAD:
 		return 0.0
 	var before := health
-	health = maxf(0.0, health - packet.health_damage)
+	var health_damage := packet.health_damage
+	if _control_lock_remaining > 0.0:
+		health_damage *= get_control_damage_multiplier()
+	health = maxf(0.0, health - health_damage)
 	resolve = maxf(0.0, resolve - packet.resolve_damage)
 	_knockback_velocity += direction.normalized() * packet.knockback_force
 	_hit_flash = 1.0
@@ -260,6 +282,77 @@ func pull_toward(point: Vector2, force: float) -> void:
 	_knockback_velocity += direction * force
 
 
+func apply_mental_focus(stacks: int, duration := 7.0) -> void:
+	if _state == State.DEAD or stacks <= 0:
+		return
+	_mental_focus = clampi(_mental_focus + stacks, 0, 5)
+	_focus_remaining = maxf(_focus_remaining, duration)
+	stats_changed.emit()
+
+
+func apply_control_lock(duration: float) -> void:
+	if _state == State.DEAD or duration <= 0.0:
+		return
+	_control_lock_remaining = maxf(_control_lock_remaining, duration)
+	_attack_area.monitoring = false
+	_attack_hit = true
+	_state = State.CHASE
+	velocity = Vector2.ZERO
+	stats_changed.emit()
+
+
+func extend_control_lock(duration: float, maximum_remaining := 6.0) -> void:
+	if _state == State.DEAD or _control_lock_remaining <= 0.0 or duration <= 0.0:
+		return
+	_control_lock_remaining = minf(maximum_remaining, _control_lock_remaining + duration)
+	stats_changed.emit()
+
+
+func apply_temporary_slow(speed_scale: float, duration: float) -> void:
+	if _state == State.DEAD or duration <= 0.0:
+		return
+	_slow_scale = minf(_slow_scale, clampf(speed_scale, 0.20, 1.0))
+	_slow_remaining = maxf(_slow_remaining, duration)
+
+
+func _tick_external_control(delta: float) -> void:
+	_control_lock_remaining = maxf(0.0, _control_lock_remaining - delta)
+	if _focus_remaining > 0.0:
+		_focus_remaining -= delta
+		if _focus_remaining <= 0.0:
+			_mental_focus = 0
+			_focus_remaining = 0.0
+	if _slow_remaining > 0.0:
+		_slow_remaining -= delta
+		if _slow_remaining <= 0.0:
+			_slow_scale = 1.0
+			_slow_remaining = 0.0
+	if _pierce_mark_remaining > 0.0:
+		_pierce_mark_remaining -= delta
+		if _pierce_mark_remaining <= 0.0:
+			_pierce_marks = 0
+			_pierce_mark_remaining = 0.0
+
+
+func apply_pierce_mark(stacks: int, duration := 8.0) -> void:
+	if _state == State.DEAD or stacks <= 0:
+		return
+	_pierce_marks = clampi(_pierce_marks + stacks, 0, 5)
+	_pierce_mark_remaining = maxf(_pierce_mark_remaining, duration)
+	stats_changed.emit()
+
+
+func consume_pierce_marks(maximum := 5) -> int:
+	if maximum <= 0 or _pierce_marks <= 0:
+		return 0
+	var consumed := mini(_pierce_marks, maximum)
+	_pierce_marks -= consumed
+	if _pierce_marks <= 0:
+		_pierce_mark_remaining = 0.0
+	stats_changed.emit()
+	return consumed
+
+
 func _begin_death() -> void:
 	if _state == State.DEAD:
 		return
@@ -298,6 +391,34 @@ func is_cursed() -> bool:
 
 func get_curse_stacks() -> int:
 	return _curse_stacks
+
+
+func is_control_locked() -> bool:
+	return _control_lock_remaining > 0.0
+
+
+func get_control_lock_remaining() -> float:
+	return _control_lock_remaining
+
+
+func get_mental_focus() -> int:
+	return _mental_focus
+
+
+func get_control_damage_multiplier() -> float:
+	return 1.0 + 0.12 * float(_mental_focus)
+
+
+func get_pierce_marks() -> int:
+	return _pierce_marks
+
+
+func is_attack_winding_up() -> bool:
+	return _state == State.WINDUP
+
+
+func get_facing_direction() -> Vector2:
+	return _facing
 
 
 func _draw() -> void:
@@ -348,6 +469,21 @@ func _draw() -> void:
 		for stack_index: int in _curse_stacks:
 			var angle := _telegraph_time * 1.4 + TAU * float(stack_index) / float(_curse_stacks)
 			draw_circle(Vector2.from_angle(angle) * 43.0, 4.0, Color("ef3b63"))
+	if _control_lock_remaining > 0.0:
+		draw_arc(Vector2.ZERO, 47.0, _telegraph_time * 0.8, _telegraph_time * 0.8 + PI * 1.65, 32, Color("65e4ff"), 4.0, true)
+		draw_line(Vector2(-29.0, -37.0), Vector2(29.0, -37.0), Color(0.48, 0.92, 1.0, 0.62), 2.0, true)
+	if _mental_focus > 0:
+		for focus_index: int in _mental_focus:
+			draw_circle(Vector2(-16.0 + float(focus_index) * 8.0, -66.0), 3.0, Color("9cf5ff"))
+	if _pierce_marks > 0:
+		for mark_index: int in _pierce_marks:
+			var mark_x := -16.0 + float(mark_index) * 8.0
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(mark_x, -75.0),
+				Vector2(mark_x + 3.5, -70.0),
+				Vector2(mark_x, -65.0),
+				Vector2(mark_x - 3.5, -70.0),
+			]), Color("f4c95d"))
 	_draw_bar(Vector2(-38.0, -57.0), 76.0, health / max_health, Color("e65b49"))
 	_draw_bar(Vector2(-38.0, -49.0), 76.0, resolve / max_resolve, Color("54d4ce"))
 

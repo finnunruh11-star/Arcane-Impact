@@ -170,6 +170,186 @@ static func sniff_annihilation(owner: Node, blessing_count: int) -> DamagePacket
 	return packet
 
 
+static func nad_foresee(owner: Node, focus_stacks: int) -> DamagePacket:
+	var focus := clampi(focus_stacks, 0, 5)
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = 11.0 + 1.5 * float(focus)
+	packet.resolve_damage = 17.0 + 2.0 * float(focus)
+	packet.knockback_force = 62.0
+	packet.hit_stop_seconds = 0.020
+	packet.camera_trauma = 0.08
+	packet.rumble_strength = 0.10
+	packet.tags.assign([&"mental", &"primary", &"control"])
+	return packet
+
+
+static func nad_mantle(owner: Node, charge: float) -> DamagePacket:
+	var shaped := CombatMath.shaped_charge(charge)
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = lerpf(18.0, 36.0, shaped)
+	packet.resolve_damage = lerpf(26.0, 54.0, shaped)
+	packet.knockback_force = lerpf(90.0, 230.0, shaped)
+	packet.hit_stop_seconds = lerpf(0.035, 0.060, shaped)
+	packet.camera_trauma = lerpf(0.20, 0.48, shaped)
+	packet.rumble_strength = lerpf(0.28, 0.68, shaped)
+	packet.tags.assign([&"mental", &"signature", &"control", &"area"])
+	return packet
+
+
+static func nad_anchor(owner: Node) -> DamagePacket:
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = 26.0
+	packet.resolve_damage = 34.0
+	packet.knockback_force = 280.0
+	packet.hit_stop_seconds = 0.040
+	packet.camera_trauma = 0.27
+	packet.rumble_strength = 0.36
+	packet.tags.assign([&"mental", &"anchor", &"control", &"area"])
+	return packet
+
+
+static func nad_cascade(owner: Node, focus_stacks: int) -> DamagePacket:
+	var focus := clampi(focus_stacks, 0, 5)
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = 24.0 + 4.0 * float(focus)
+	packet.resolve_damage = 22.0 + 3.0 * float(focus)
+	packet.knockback_force = 190.0
+	packet.hit_stop_seconds = 0.038
+	packet.camera_trauma = 0.24
+	packet.rumble_strength = 0.31
+	packet.tags.assign([&"mental", &"cascade", &"control", &"area"])
+	return packet
+
+
+static func nad_conduit(owner: Node, focus_stacks: int, was_locked: bool) -> DamagePacket:
+	var focus := clampi(focus_stacks, 0, 5)
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = (64.0 if was_locked else 34.0) + 8.0 * float(focus)
+	packet.resolve_damage = (74.0 if was_locked else 42.0) + 5.0 * float(focus)
+	packet.knockback_force = 460.0 if was_locked else 250.0
+	packet.hit_stop_seconds = 0.086 if was_locked else 0.052
+	packet.camera_trauma = 0.88 if was_locked else 0.48
+	packet.rumble_strength = 1.0 if was_locked else 0.58
+	packet.tags.assign([&"mental", &"ultimate", &"control", &"area"])
+	return packet
+
+
+static func fin_dagger(owner: Node, stage: int, damage_scale := 1.0) -> DamagePacket:
+	var clamped_stage := clampi(stage, 0, 2)
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = [13.0, 17.0, 29.0][clamped_stage] * maxf(0.0, damage_scale)
+	packet.resolve_damage = [8.0, 11.0, 20.0][clamped_stage]
+	packet.knockback_force = [72.0, 95.0, 185.0][clamped_stage]
+	packet.hit_stop_seconds = [0.018, 0.024, 0.040][clamped_stage]
+	packet.camera_trauma = [0.06, 0.09, 0.20][clamped_stage]
+	packet.rumble_strength = [0.08, 0.12, 0.26][clamped_stage]
+	packet.tags.assign([&"fin", &"pierce", &"melee", &"primary"])
+	return packet
+
+
+static func fin_mind_pierce(owner: Node, charge: float, marks: int, backstab: bool) -> DamagePacket:
+	var shaped := CombatMath.shaped_charge(charge)
+	var mark_count := clampi(marks, 0, 5)
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = lerpf(34.0, 74.0, shaped) * (1.0 + 0.17 * float(mark_count)) * (1.32 if backstab else 1.0)
+	packet.resolve_damage = lerpf(22.0, 54.0, shaped) + 5.0 * float(mark_count)
+	packet.knockback_force = lerpf(170.0, 390.0, shaped)
+	packet.hit_stop_seconds = lerpf(0.036, 0.070, shaped)
+	packet.camera_trauma = lerpf(0.22, 0.58, shaped)
+	packet.rumble_strength = lerpf(0.30, 0.78, shaped)
+	packet.tags.assign([&"fin", &"pierce", &"signature", &"exploit"])
+	return packet
+
+
+static func fin_arrow(owner: Node, charge: float, range_ratio: float) -> DamagePacket:
+	var shaped := CombatMath.shaped_charge(charge)
+	var distance_bonus := lerpf(1.0, 1.36, clampf(range_ratio, 0.0, 1.0))
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = lerpf(21.0, 65.0, shaped) * distance_bonus
+	packet.resolve_damage = lerpf(11.0, 31.0, shaped)
+	packet.knockback_force = lerpf(95.0, 260.0, shaped)
+	packet.hit_stop_seconds = lerpf(0.020, 0.046, shaped)
+	packet.camera_trauma = lerpf(0.08, 0.28, shaped)
+	packet.rumble_strength = lerpf(0.10, 0.36, shaped)
+	packet.tags.assign([&"fin", &"pierce", &"projectile", &"bow"])
+	return packet
+
+
+static func fin_throwing_dagger(owner: Node) -> DamagePacket:
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = 17.0
+	packet.resolve_damage = 8.0
+	packet.knockback_force = 78.0
+	packet.hit_stop_seconds = 0.018
+	packet.camera_trauma = 0.07
+	packet.rumble_strength = 0.08
+	packet.tags.assign([&"fin", &"pierce", &"projectile", &"utility"])
+	return packet
+
+
+static func fin_crossbow(owner: Node, charge: float, marks: int) -> DamagePacket:
+	var shaped := CombatMath.shaped_charge(charge)
+	var mark_count := clampi(marks, 0, 5)
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = lerpf(82.0, 168.0, shaped) * (1.0 + 0.12 * float(mark_count))
+	packet.resolve_damage = lerpf(68.0, 142.0, shaped) + 7.0 * float(mark_count)
+	packet.knockback_force = lerpf(520.0, 880.0, shaped)
+	packet.hit_stop_seconds = lerpf(0.066, 0.104, shaped)
+	packet.camera_trauma = lerpf(0.58, 1.0, shaped)
+	packet.rumble_strength = lerpf(0.72, 1.0, shaped)
+	packet.tags.assign([&"fin", &"pierce", &"crossbow", &"heavy", &"exploit"])
+	return packet
+
+
+static func fin_rod(owner: Node, current_resolve: float) -> DamagePacket:
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = 14.0
+	packet.resolve_damage = 13.0 + maxf(0.0, current_resolve) * 0.20
+	packet.knockback_force = 68.0
+	packet.hit_stop_seconds = 0.020
+	packet.camera_trauma = 0.09
+	packet.rumble_strength = 0.11
+	packet.tags.assign([&"fin", &"object", &"rod", &"projectile"])
+	return packet
+
+
+static func fin_mutivarg(owner: Node, power: float) -> DamagePacket:
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = lerpf(8.0, 15.0, clampf(power, 0.0, 1.0))
+	packet.resolve_damage = lerpf(15.0, 29.0, clampf(power, 0.0, 1.0))
+	packet.knockback_force = 42.0
+	packet.hit_stop_seconds = 0.016
+	packet.camera_trauma = 0.06
+	packet.rumble_strength = 0.08
+	packet.tags.assign([&"fin", &"object", &"mutivarg", &"control", &"area"])
+	return packet
+
+
+static func fin_alchemical(owner: Node) -> DamagePacket:
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = 11.0
+	packet.resolve_damage = 13.0
+	packet.knockback_force = 34.0
+	packet.hit_stop_seconds = 0.014
+	packet.camera_trauma = 0.05
+	packet.rumble_strength = 0.06
+	packet.tags.assign([&"fin", &"object", &"alchemical", &"area"])
+	return packet
+
+
 static func enemy_melee(owner: Node, damage := 24.0) -> DamagePacket:
 	var packet := DamagePacket.new()
 	packet.source = owner

@@ -74,6 +74,46 @@ func sniff_combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, 
 	_start_rumble(packet.rumble_strength)
 
 
+func nad_combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float) -> void:
+	if is_instance_valid(_hit_stop):
+		_hit_stop.request(packet.hit_stop_seconds)
+	if is_instance_valid(_camera):
+		_camera.intensity_scale = shake_scale
+		_camera.add_trauma(packet.camera_trauma)
+	play_mental_distortion(at, lerpf(42.0, 98.0, clampf(intensity, 0.0, 1.0)), intensity, &"impact")
+	var damage_label := FloatingDamageLabel.new()
+	damage_label.configure(at, packet.health_damage, direction)
+	add_child(damage_label)
+	_flash.color = Color(0.68, 1.0, 0.84, _flash.color.a)
+	_flash_strength = maxf(_flash_strength, lerpf(0.035, 0.20, intensity) * flash_scale)
+	_sfx.play_cue(&"nad_impact", intensity)
+	_start_rumble(packet.rumble_strength)
+
+
+func fin_combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float) -> void:
+	if is_instance_valid(_hit_stop):
+		_hit_stop.request(packet.hit_stop_seconds)
+	if is_instance_valid(_camera):
+		_camera.intensity_scale = shake_scale
+		_camera.add_trauma(packet.camera_trauma)
+	var effect_id := &"fin_cut"
+	var tint := Color("a7ead8")
+	if packet.tags.has(&"crossbow") or packet.tags.has(&"bow") or packet.tags.has(&"projectile"):
+		effect_id = &"fin_shot"
+		tint = Color("f1cf69")
+	if packet.tags.has(&"object"):
+		effect_id = &"fin_tool"
+		tint = Color("66d3bd")
+	VfxCatalog.spawn_world(self, effect_id, at, direction, lerpf(0.66, 1.48, clampf(intensity, 0.0, 1.0)), tint)
+	var damage_label := FloatingDamageLabel.new()
+	damage_label.configure(at, packet.health_damage, direction)
+	add_child(damage_label)
+	_flash.color = Color(0.84, 0.96, 0.78, _flash.color.a)
+	_flash_strength = maxf(_flash_strength, lerpf(0.035, 0.21, intensity) * flash_scale)
+	_sfx.play_cue(&"fin_impact", intensity)
+	_start_rumble(packet.rumble_strength)
+
+
 func enemy_attack_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float) -> void:
 	if is_instance_valid(_camera):
 		_camera.add_trauma(packet.camera_trauma * 0.72)
@@ -83,7 +123,25 @@ func enemy_attack_impact(at: Vector2, direction: Vector2, packet: DamagePacket, 
 
 
 func play_effect(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float) -> void:
+	if effect_id == &"nad_probe":
+		play_mental_distortion(at, 72.0 * size_scale, 0.42, &"probe")
+		return
 	var effect := VfxCatalog.spawn_world(self, effect_id, at, direction, size_scale)
+	match effect_id:
+		&"fin_cut":
+			effect.modulate = Color("a9ead9")
+		&"fin_shot":
+			effect.modulate = Color("f1cd66")
+		&"fin_shadow":
+			effect.modulate = Color("589b94")
+		&"fin_tool":
+			effect.modulate = Color("62d2ba")
+		&"fin_smoke":
+			effect.modulate = Color(0.28, 0.54, 0.42, 0.72)
+		&"fin_parry":
+			effect.modulate = Color("f3d56f")
+		&"fin_switch":
+			effect.modulate = Color("dce98c")
 	if effect_id == &"sniff_blessing":
 		effect.z_index = 11
 	if effect_id == &"kat_communion":
@@ -97,6 +155,29 @@ func play_lightning_arc(from: Vector2, to: Vector2, power: float) -> void:
 	var arc := LightningArc.new()
 	add_child(arc)
 	arc.configure(from, to, power)
+
+
+func play_mind_link(from: Vector2, to: Vector2, power: float) -> void:
+	var link := MindLink.new()
+	add_child(link)
+	link.configure(from, to, power)
+
+
+func play_mental_distortion(at: Vector2, radius: float, power: float, kind: StringName) -> void:
+	var distortion := MentalDistortion.new()
+	add_child(distortion)
+	distortion.configure(at, radius, power, kind)
+	if kind == &"conduit":
+		if is_instance_valid(_camera):
+			_camera.add_trauma(1.0)
+		_flash.color = Color(0.72, 1.0, 0.78, _flash.color.a)
+		_flash_strength = maxf(_flash_strength, 0.30 * flash_scale)
+		_start_rumble(1.0)
+	elif kind == &"anchor_detonate" or kind == &"mantle":
+		if is_instance_valid(_camera):
+			_camera.add_trauma(lerpf(0.18, 0.48, power))
+		_flash_strength = maxf(_flash_strength, lerpf(0.04, 0.13, power) * flash_scale)
+		_start_rumble(lerpf(0.22, 0.58, power))
 
 
 func play_thunder_burst(at: Vector2, radius: float, power: float, ultimate: bool) -> void:
@@ -127,6 +208,19 @@ func play_guard_impact(at: Vector2, direction: Vector2, perfect: bool, power: fl
 		_camera.add_trauma(0.38 if perfect else 0.20)
 	_flash_strength = maxf(_flash_strength, (0.17 if perfect else 0.08) * flash_scale)
 	_start_rumble(0.72 if perfect else 0.38)
+
+
+func play_fin_parry(at: Vector2, direction: Vector2, perfect: bool, power: float) -> void:
+	var strength := clampf(power / 38.0, 0.25, 1.0)
+	VfxCatalog.spawn_world(self, &"fin_parry", at, direction, 0.78 + strength * 0.42, Color("f2d264") if perfect else Color("73c8b7"))
+	VfxCatalog.spawn_world(self, &"fin_cut", at, -direction, 0.74 + strength * 0.30, Color("f7f0ce"))
+	if is_instance_valid(_hit_stop):
+		_hit_stop.request(0.060 if perfect else 0.028)
+	if is_instance_valid(_camera):
+		_camera.add_trauma(0.46 if perfect else 0.18)
+	_flash.color = Color(1.0, 0.88, 0.48, _flash.color.a)
+	_flash_strength = maxf(_flash_strength, (0.19 if perfect else 0.07) * flash_scale)
+	_start_rumble(0.82 if perfect else 0.34)
 
 
 func _process(delta: float) -> void:

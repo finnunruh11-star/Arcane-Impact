@@ -24,6 +24,20 @@ func _capture() -> void:
 		quit(1)
 		return
 
+	scene.call("_select", 2)
+	for _frame: int in 4:
+		await process_frame
+	if not _save_capture("roster_nad.png"):
+		quit(1)
+		return
+
+	scene.call("_select", 3)
+	for _frame: int in 4:
+		await process_frame
+	if not _save_capture("roster_fin.png"):
+		quit(1)
+		return
+
 	scene.queue_free()
 	for _frame: int in 8:
 		await process_frame

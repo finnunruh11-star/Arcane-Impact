@@ -10,6 +10,10 @@ const TargetDummyScript := preload("res://scripts/actors/target_dummy.gd")
 const KatPlayerScript := preload("res://scripts/characters/kat/kat_player.gd")
 const SniffPlayerScript := preload("res://scripts/characters/sniff/sniff_player.gd")
 const SniffDartScript := preload("res://scripts/characters/sniff/lightning_dart.gd")
+const NadPlayerScript := preload("res://scripts/characters/nad/nad_player.gd")
+const FinPlayerScript := preload("res://scripts/characters/fin/fin_player.gd")
+const FinProjectileScript := preload("res://scripts/characters/fin/fin_projectile.gd")
+const FinFieldScript := preload("res://scripts/characters/fin/fin_field.gd")
 const ReliquaryPursuerScript := preload("res://scripts/enemies/reliquary_pursuer.gd")
 const VfxCatalogScript := preload("res://scripts/presentation/vfx_catalog.gd")
 
@@ -139,6 +143,19 @@ func _run() -> void:
 		var sniff_effect = VfxCatalogScript.spawn_world(root, effect_id, Vector2.ZERO)
 		_expect(sniff_effect.hframes == int(sniff_effect_specs[effect_id]) and sniff_effect.vframes == 1, "%s slices into its authored frames" % effect_id)
 		sniff_effect.queue_free()
+	var fin_effect_specs := {
+		&"fin_cut": 5,
+		&"fin_shot": 5,
+		&"fin_shadow": 10,
+		&"fin_tool": 7,
+		&"fin_smoke": 31,
+		&"fin_parry": 31,
+		&"fin_switch": 14,
+	}
+	for effect_id: StringName in fin_effect_specs:
+		var fin_effect = VfxCatalogScript.spawn_world(root, effect_id, Vector2.ZERO)
+		_expect(fin_effect.hframes == int(fin_effect_specs[effect_id]) and fin_effect.vframes == 1, "%s slices into its authored frames" % effect_id)
+		fin_effect.queue_free()
 	kat_world.queue_free()
 	await process_frame
 
@@ -224,6 +241,197 @@ func _run() -> void:
 	_expect(sniff_enemies[2].health < ultimate_target_before, "Divine Annihilation damages enemies across its arena radius")
 
 	sniff_world.queue_free()
+	await process_frame
+
+	var nad_world := Node2D.new()
+	root.add_child(nad_world)
+	var nad = NadPlayerScript.new()
+	nad.position = Vector2(430.0, 360.0)
+	nad_world.add_child(nad)
+	nad.set("_using_gamepad", true)
+	var nad_enemy = ReliquaryPursuerScript.new()
+	nad_enemy.configure(nad, 1)
+	nad_enemy.position = Vector2(570.0, 360.0)
+	nad_enemy.move_speed = 0.0
+	nad_world.add_child(nad_enemy)
+	await process_frame
+
+	nad_enemy.apply_mental_focus(10, 7.0)
+	_expect(nad_enemy.get_mental_focus() == 5, "Mental Focus caps at five stacks")
+	nad_enemy.apply_pierce_mark(10, 8.0)
+	_expect(nad_enemy.get_pierce_marks() == 5, "Fin's Pierce Marks cap at five stacks")
+	_expect(nad_enemy.consume_pierce_marks(3) == 3 and nad_enemy.get_pierce_marks() == 2, "Pierce Marks can be partially consumed by a finisher")
+	nad_enemy.call("_begin_windup")
+	_expect(nad_enemy.is_attack_winding_up(), "Fin can read an authoritative enemy windup")
+	nad_enemy.apply_control_lock(0.3)
+	nad_enemy.apply_control_lock(1.8)
+	_expect(nad_enemy.is_control_locked(), "Eldritch control exposes an explicit enemy lock state")
+	var remaining_before_extension: float = nad_enemy.get_control_lock_remaining()
+	nad_enemy.extend_control_lock(0.6)
+	_expect(nad_enemy.get_control_lock_remaining() > remaining_before_extension, "Mental Cascade can extend an active lock")
+	var amplified_packet = DamagePacketScript.nad_foresee(nad, 0)
+	var amplified_damage: float = nad_enemy.receive_hit(amplified_packet, Vector2.RIGHT)
+	_expect(is_equal_approx(amplified_damage, amplified_packet.health_damage * 1.6), "five Focus stacks amplify damage to a locked target")
+
+	nad.mana = NadPlayerScript.MAX_MANA
+	nad.aim_direction = Vector2.RIGHT
+	var foresee_health_before: float = nad_enemy.health
+	nad.call("_begin_foresee")
+	nad.call("_begin_foresee_active")
+	for _frame: int in 3:
+		await physics_frame
+		await process_frame
+	_expect(nad_enemy.health < foresee_health_before, "Foresee damages through its narrow collision probe")
+	_expect(nad.mana < NadPlayerScript.MAX_MANA, "Foresee spends Mana")
+
+	var anchor_enemy = ReliquaryPursuerScript.new()
+	anchor_enemy.configure(nad, 1)
+	anchor_enemy.position = Vector2(695.0, 360.0)
+	anchor_enemy.move_speed = 0.0
+	nad_world.add_child(anchor_enemy)
+	await process_frame
+	nad.mana = NadPlayerScript.MAX_MANA
+	for _anchor_index: int in 3:
+		nad.call("_cast_terrain_anchor")
+	_expect(nad.get_anchor_count() == 3, "Terrain Anchors persist up to their three-anchor cap")
+	for _frame: int in 3:
+		await physics_frame
+		await process_frame
+	var anchor_health_before: float = anchor_enemy.health
+	nad.call("_cast_terrain_anchor")
+	_expect(nad.get_anchor_count() == 0, "a fourth Anchor command collapses the active lattice")
+	_expect(anchor_enemy.health < anchor_health_before, "Anchor collapse damages through each persistent circular field")
+
+	var conduit_enemy = ReliquaryPursuerScript.new()
+	conduit_enemy.configure(nad, 1)
+	conduit_enemy.position = Vector2(760.0, 480.0)
+	conduit_enemy.move_speed = 0.0
+	nad_world.add_child(conduit_enemy)
+	await process_frame
+	conduit_enemy.apply_mental_focus(3, 8.0)
+	conduit_enemy.apply_control_lock(2.0)
+	nad.mana = NadPlayerScript.MAX_MANA
+	nad.call("_begin_arcane_conduit")
+	var conduit_health_before: float = nad.health
+	var conduit_blocked: float = nad.receive_hit(DamagePacketScript.enemy_melee(conduit_enemy, 42.0), Vector2.LEFT)
+	_expect(conduit_blocked == 0.0 and nad.health == conduit_health_before, "Arcane Conduit grants cast-window invulnerability")
+	for _frame: int in 2:
+		await physics_frame
+		await process_frame
+	var conduit_target_before: float = conduit_enemy.health
+	nad.call("_resolve_arcane_conduit")
+	_expect(conduit_enemy.health < conduit_target_before, "Arcane Conduit cashes out a locked target across its arena sensor")
+	_expect(nad.ultimate_cooldown > 0.0, "Arcane Conduit starts its cooldown")
+	_expect(
+		DamagePacketScript.nad_conduit(nad, 3, true).health_damage > DamagePacketScript.nad_conduit(nad, 3, false).health_damage,
+		"Arcane Conduit explicitly rewards pre-locked targets"
+	)
+
+	nad_world.queue_free()
+	await process_frame
+
+	var fin_world := Node2D.new()
+	root.add_child(fin_world)
+	var fin = FinPlayerScript.new()
+	fin.position = Vector2(430.0, 360.0)
+	fin_world.add_child(fin)
+	fin.set("_using_gamepad", true)
+	fin.aim_direction = Vector2.RIGHT
+	var fin_enemy = ReliquaryPursuerScript.new()
+	fin_enemy.configure(fin, 1)
+	fin_enemy.position = Vector2(570.0, 360.0)
+	fin_enemy.move_speed = 0.0
+	fin_world.add_child(fin_enemy)
+	await process_frame
+
+	_expect(fin.get_form() == FinPlayerScript.Form.NIGHTBLADE, "Fin opens in Nightblade form")
+	fin.cycle_form()
+	_expect(fin.get_form() == FinPlayerScript.Form.ARBALEST, "tap switching cycles Fin's form")
+	_expect(fin.get_form_for_direction(Vector2.DOWN) == FinPlayerScript.Form.HUNTSMAN, "held form selection maps down to Huntsman")
+	_expect(fin.get_form_for_direction(Vector2.LEFT) == FinPlayerScript.Form.ARTIFICER, "held form selection maps left to Artificer")
+
+	fin.select_form(FinPlayerScript.Form.NIGHTBLADE)
+	fin_enemy.apply_pierce_mark(5, 8.0)
+	var pierce_health_before: float = fin_enemy.health
+	fin.set("_active_action", &"mind_pierce")
+	fin.set("_signature_charge", 1.0)
+	fin.call("_release_signature")
+	for _frame: int in 3:
+		await physics_frame
+		await process_frame
+	_expect(fin_enemy.health < pierce_health_before, "Mind Pierce damages through its collision thrust")
+	_expect(fin_enemy.get_pierce_marks() == 0, "Mind Pierce consumes prepared Pierce Marks")
+	fin.call("_cast_umbral_veil")
+	_expect(fin.is_concealed(), "Umbral Veil enters an explicit concealment state")
+	fin_enemy.call("_begin_windup")
+	fin_enemy.call("_physics_process", 0.02)
+	_expect(not fin_enemy.is_attack_winding_up(), "concealment interrupts enemy windup authority")
+
+	fin.select_form(FinPlayerScript.Form.ARBALEST)
+	fin.set("_crossbow_loaded", true)
+	fin.set("_knockback_velocity", Vector2.ZERO)
+	fin.call("_begin_primary", 0)
+	fin.call("_resolve_primary")
+	_expect(not fin.is_crossbow_loaded() and fin.get_crossbow_reload() > 0.0, "Crossbow fire enters a real reload lockout")
+	_expect((fin.get("_knockback_velocity") as Vector2).x < 0.0, "Crossbow fire applies directional recoil")
+	fin.call("_tick_timers", FinPlayerScript.CROSSBOW_RELOAD_TIME + 0.1)
+	_expect(fin.is_crossbow_loaded(), "Crossbow reload completes while other forms are available")
+	_expect(
+		DamagePacketScript.fin_arrow(fin, 1.0, 1.0).health_damage > DamagePacketScript.fin_arrow(fin, 1.0, 0.0).health_damage,
+		"Huntsman arrows reward authored long range"
+	)
+
+	fin.select_form(FinPlayerScript.Form.HUNTSMAN)
+	fin.aim_direction = Vector2.RIGHT
+	fin_enemy.position = Vector2(665.0, 360.0)
+	fin_enemy.health = fin_enemy.max_health
+	fin_enemy.resolve = fin_enemy.max_resolve
+	fin.call("_cast_shadow_bind")
+	_expect(fin.get_trap_count() == 1, "Shadow Bind places a persistent collision trap")
+	for _frame: int in 3:
+		await physics_frame
+		await process_frame
+	_expect(fin_enemy.is_control_locked() and fin_enemy.get_pierce_marks() >= 2, "Shadow Bind roots and marks an overlapping enemy")
+	var daggers_before: int = fin.get_throwing_dagger_count()
+	fin.call("_throw_dagger")
+	_expect(fin.get_throwing_dagger_count() == daggers_before - 1, "Throwing Daggers consume finite regenerating charges")
+
+	fin.select_form(FinPlayerScript.Form.ARTIFICER)
+	fin.health = 120.0
+	var potions_before: int = fin.get_potion_count()
+	_expect(fin.use_potion(FinPlayerScript.Potion.MENDING), "Artificer can deliberately select a potion")
+	_expect(fin.health > 120.0 and fin.get_potion_count() == potions_before - 1, "Mending Draught heals and consumes one supply")
+	var smoke_before: int = fin.get_smoke_bomb_count()
+	fin.call("_throw_smoke_bomb")
+	_expect(fin.get_smoke_bomb_count() == smoke_before - 1 and fin.is_concealed(), "Smoke Bomb creates concealment and consumes a charge")
+	fin.set("_active_action", &"mutivarg_field")
+	fin.set("_signature_charge", 1.0)
+	fin.call("_release_signature")
+	var has_mutivarg_field := false
+	for child: Node in fin_world.get_children():
+		if child.get_script() == FinFieldScript and int(child.get("_kind")) == FinFieldScript.Kind.MUTIVARG:
+			has_mutivarg_field = true
+			break
+	_expect(has_mutivarg_field and fin.mutivarg_cooldown > 0.0, "Mutivarg's Rod deploys a persistent compression field")
+
+	fin.global_position = Vector2(430.0, 360.0)
+	fin_enemy.global_position = Vector2(550.0, 360.0)
+	fin_enemy.call("_begin_windup")
+	fin.aim_direction = Vector2.RIGHT
+	fin.call("_begin_masterful_parry")
+	_expect(fin.get_readied_parry_target() == fin_enemy, "Masterful Parry reads an enemy's active windup")
+	var parry_health_before: float = fin.health
+	var parried_damage: float = fin.receive_hit(DamagePacketScript.enemy_melee(fin_enemy, 36.0), Vector2.LEFT)
+	_expect(parried_damage == 0.0 and fin.health == parry_health_before, "readied Masterful Parry negates the incoming strike")
+	_expect(fin_enemy.get_pierce_marks() >= 2, "perfect parry turns enemy intent into Pierce Marks")
+
+	var spawned_fin_projectile := false
+	for child: Node in fin_world.get_children():
+		if child.get_script() == FinProjectileScript:
+			spawned_fin_projectile = true
+			break
+	_expect(spawned_fin_projectile, "Fin's ranged forms spawn collision-backed projectiles")
+	fin_world.queue_free()
 	await process_frame
 
 	if _failures.is_empty():
