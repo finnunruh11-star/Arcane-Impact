@@ -1,0 +1,17 @@
+# Godot-generated state
+.godot/
+.import/
+
+# Builds and local tooling
+build/
+exports/
+*.log
+*.tmp
+*.tscn~
+*.gd~
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
