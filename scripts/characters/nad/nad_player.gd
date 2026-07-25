@@ -75,6 +75,9 @@ var _attack_shape: CollisionShape2D
 var _attack_resolved := false
 var _anchors: Array[TerrainAnchor] = []
 var _visual_time := 0.0
+var _survivor_mode := false
+var _survivor_target: Node2D
+var _survivor_power_multiplier := 1.0
 
 
 func _ready() -> void:
@@ -119,6 +122,20 @@ func _ready() -> void:
 	queue_redraw()
 
 
+func set_survivor_mode(enabled: bool) -> void:
+	_survivor_mode = enabled
+	if not enabled:
+		_survivor_target = null
+
+
+func set_survivor_power_multiplier(multiplier: float) -> void:
+	_survivor_power_multiplier = maxf(0.1, multiplier)
+
+
+func get_survivor_power_multiplier() -> float:
+	return _survivor_power_multiplier
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_set_using_gamepad(false)
@@ -160,6 +177,12 @@ func _update_buffers(delta: float) -> void:
 
 
 func _update_aim() -> void:
+	if _survivor_mode:
+		if is_instance_valid(_survivor_target):
+			var target_direction := _survivor_target.global_position - global_position
+			if not target_direction.is_zero_approx():
+				aim_direction = target_direction.normalized()
+		return
 	var raw_stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
@@ -254,6 +277,21 @@ func _handle_free_inputs() -> void:
 	elif (Input.is_action_just_pressed(&"primary") or _primary_buffer > 0.0) and mana >= FORESEE_COST:
 		_primary_buffer = 0.0
 		_begin_foresee()
+
+
+func try_survivor_primary(target: Node2D) -> bool:
+	if not is_instance_valid(target):
+		return false
+	_survivor_target = target
+	if _state != State.FREE or mana < FORESEE_COST:
+		return false
+	var target_direction := target.global_position - global_position
+	if target_direction.is_zero_approx():
+		return false
+	aim_direction = target_direction.normalized()
+	_primary_buffer = 0.0
+	_begin_foresee()
+	return true
 
 
 func _update_movement() -> void:

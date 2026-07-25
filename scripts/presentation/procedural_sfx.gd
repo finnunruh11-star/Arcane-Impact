@@ -26,6 +26,14 @@ func _ready() -> void:
 	_void_stream = _build_void_stream()
 
 
+func _exit_tree() -> void:
+	for child: Node in get_children():
+		if child is AudioStreamPlayer:
+			var player := child as AudioStreamPlayer
+			player.stop()
+			player.stream = null
+
+
 func play_release(power: float) -> void:
 	_play_one_shot(_release_stream, lerpf(-9.0, -3.5, clampf(power, 0.0, 1.0)), 0.94 + power * 0.08)
 

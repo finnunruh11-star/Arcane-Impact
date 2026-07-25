@@ -26,6 +26,7 @@ func _run() -> void:
 		current_scene.queue_free()
 	for _frame: int in 8:
 		await process_frame
+	await create_timer(0.15, true, false, true).timeout
 	quit(0)
 
 

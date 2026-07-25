@@ -173,7 +173,7 @@ func _build_interface() -> void:
 		var abilities := _make_label(String(data[5]), Vector2(14.0, 378.0), Vector2(268.0, 52.0), 8, Color("81999b"), HORIZONTAL_ALIGNMENT_CENTER)
 		abilities.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		panel.add_child(abilities)
-		var button := _make_button(Vector2(46.0, 446.0), Vector2(204.0, 44.0), "DEPLOY %s" % String(data[1]), accent)
+		var button := _make_button(Vector2(46.0, 446.0), Vector2(204.0, 44.0), "BEGIN %s RUN" % String(data[1]), accent)
 		button.mouse_entered.connect(func() -> void: _select(index))
 		button.pressed.connect(func() -> void: _deploy(index))
 		panel.add_child(button)
@@ -203,7 +203,6 @@ func _deploy(index: int) -> void:
 	_transition_time = 0.0
 	for device: int in Input.get_connected_joypads():
 		Input.start_joy_vibration(device, 0.22, 0.38, 0.12)
-
 
 func _refresh_selection() -> void:
 	for index: int in _panels.size():

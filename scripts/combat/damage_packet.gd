@@ -10,6 +10,7 @@ var hit_stop_seconds: float = 0.0
 var camera_trauma: float = 0.0
 var rumble_strength: float = 0.0
 var tags: Array[StringName] = []
+var survivor_power_applied := false
 
 
 static func kat_primary(stage: int, owner: Node) -> DamagePacket:

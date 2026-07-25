@@ -73,6 +73,11 @@ var _attack_area: Area2D
 var _attack_shape: CollisionShape2D
 var _visual_time := 0.0
 var _rng := RandomNumberGenerator.new()
+var _movement_bounds := Rect2()
+var _has_movement_bounds := false
+var _survivor_mode := false
+var _survivor_target: Node2D
+var _survivor_power_multiplier := 1.0
 
 
 func _ready() -> void:
@@ -120,6 +125,29 @@ func _ready() -> void:
 	queue_redraw()
 
 
+func set_survivor_mode(enabled: bool) -> void:
+	_survivor_mode = enabled
+	if not enabled:
+		_survivor_target = null
+
+
+func set_survivor_power_multiplier(multiplier: float) -> void:
+	_survivor_power_multiplier = maxf(0.1, multiplier)
+
+
+func get_survivor_power_multiplier() -> float:
+	return _survivor_power_multiplier
+
+
+func set_movement_bounds(bounds: Rect2) -> void:
+	_movement_bounds = bounds.abs()
+	_has_movement_bounds = _movement_bounds.has_area()
+
+
+func clear_movement_bounds() -> void:
+	_has_movement_bounds = false
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_set_using_gamepad(false)
@@ -138,7 +166,7 @@ func _physics_process(delta: float) -> void:
 	_update_state(delta)
 	_update_movement()
 	move_and_slide()
-	_clamp_to_arena()
+	_clamp_to_movement_bounds()
 	_visual_time += delta
 	queue_redraw()
 
@@ -160,6 +188,12 @@ func _update_buffers(delta: float) -> void:
 
 
 func _update_aim() -> void:
+	if _survivor_mode:
+		if is_instance_valid(_survivor_target):
+			var target_direction := _survivor_target.global_position - global_position
+			if not target_direction.is_zero_approx():
+				aim_direction = target_direction.normalized()
+		return
 	var raw_stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
@@ -237,6 +271,21 @@ func _handle_free_inputs() -> void:
 	elif Input.is_action_just_pressed(&"primary") or _primary_buffer > 0.0:
 		_primary_buffer = 0.0
 		_begin_dart()
+
+
+func try_survivor_primary(target: Node2D) -> bool:
+	if not is_instance_valid(target):
+		return false
+	_survivor_target = target
+	if _state != State.FREE:
+		return false
+	var target_direction := target.global_position - global_position
+	if target_direction.is_zero_approx():
+		return false
+	aim_direction = target_direction.normalized()
+	_primary_buffer = 0.0
+	_begin_dart()
+	return true
 
 
 func _update_movement() -> void:
@@ -568,10 +617,11 @@ func _set_using_gamepad(value: bool) -> void:
 	_using_gamepad = value
 
 
-func _clamp_to_arena() -> void:
-	var bounds := ArenaBackdrop.PLAYABLE_RECT.grow(-36.0)
-	global_position.x = clampf(global_position.x, bounds.position.x, bounds.end.x)
-	global_position.y = clampf(global_position.y, bounds.position.y, bounds.end.y)
+func _clamp_to_movement_bounds() -> void:
+	if not _has_movement_bounds:
+		return
+	global_position.x = clampf(global_position.x, _movement_bounds.position.x, _movement_bounds.end.x)
+	global_position.y = clampf(global_position.y, _movement_bounds.position.y, _movement_bounds.end.y)
 
 
 func is_using_gamepad() -> bool:

@@ -24,33 +24,39 @@ button, Xbox A, or Xbox X.
 
 ## Goal and encounter flow
 
-Arcane Impact is currently an endless combat arena. Defeat every enemy in a
-wave to begin the next one after a short pause. Wave 1 starts with three
-enemies; later waves grow to a maximum of five. Enemy profiles rotate between:
+Deploying a hero begins a ten-minute run in the Shattered Reliquary. Primary
+attacks automatically target the nearest living enemy while movement and the
+hero's active abilities remain under direct control. Enemies enter continuously
+from all four arena edges; the active population, health, damage, and speed rise
+throughout the ritual. Enemy profiles rotate between:
 
 - **Ashen Pursuer:** balanced speed, durability, and attack timing.
 - **Iron Penitent:** slow, durable, and hard-hitting, with the longest windup.
 - **Relic Stalker:** fast and fragile, with the shortest windup.
 
 Red ground shapes show the exact area of an incoming enemy strike. Enemy health
-is the red bar above the enemy; cyan is Resolve. Defeat reloads the selected
-hero's encounter after 2.6 seconds.
+is the red bar above the enemy; cyan is Resolve. Defeated enemies drop green
+Arcane Essence shards. Move near a shard to draw it in. Filling the Essence bar
+pauses combat and presents three boons:
 
-Wave recovery depends on the hero:
+- **Force:** increases health and Resolve damage by 20%.
+- **Haste:** increases automatic primary attack speed by 14%.
+- **Magnetism:** increases Essence attraction range by 70 pixels.
+- **Recovery:** restores 1.5 health per second and heals 18 immediately.
+- **Wisdom:** increases Essence gained from every shard by 20%.
 
-- Kat heals 42 and gains 14 Vitality after clearing a wave.
-- Sniff heals 30 and gains 2 Blessing after clearing a wave.
-- Nad heals 28 and restores 34 Mana after clearing a wave.
-- Fin heals 28, refills his tool supplies and Crossbow, and gains 22 Ward after
-  clearing a wave.
+Boons stack for the duration of the run. Survive until 10:00 to complete the
+ritual. Defeat opens a summary with retry and roster actions. Escape or the
+controller Menu button returns to the roster at any time.
 
 ## Shared combat mechanics
 
-### Movement and aim
+### Movement and targeting
 
-Move with WASD or the left stick. Aim independently with the mouse or right
-stick. Most directional abilities use the current aim direction; movement
-abilities use held movement input when available and otherwise use aim.
+Move with WASD or the left stick. The run controller tracks the closest living
+enemy and automatically aims primary attacks at it. Directional active
+abilities use that target direction; movement abilities prefer held movement
+input when available.
 
 ### Health
 
@@ -413,7 +419,7 @@ Dagger, Potions, Smoke Bombs, and the Unreal item Mutivarg's Rod.
 - **Health:** 245 maximum.
 - **Resolve:** 175 maximum and regenerates at 5.5 per second.
 - **Ward:** up to 52 temporary damage absorption. It is spent before health
-  and slowly fades. Wave recovery grants 22 Ward.
+  and slowly fades.
 - **Pierce Marks:** each enemy can hold up to five for 8 seconds. Fast attacks,
   traps, and fields prepare Marks; Mind Pierce and Crossbow bolts
   consume them for damage or control.

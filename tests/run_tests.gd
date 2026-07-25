@@ -68,6 +68,15 @@ func _run() -> void:
 	_expect(dummy.is_resolve_broken, "repeated control damage breaks Resolve")
 	dummy.reset_full()
 	_expect(dummy.health == TargetDummyScript.MAX_HEALTH and dummy.resolve == TargetDummyScript.MAX_RESOLVE, "dummy reset restores combat resources")
+	var survivor_source = KatPlayerScript.new()
+	survivor_source.set_survivor_power_multiplier(1.5)
+	var survivor_packet = DamagePacketScript.kat_primary(0, survivor_source)
+	DamageResolverScript.apply(dummy, survivor_packet, Vector2.RIGHT)
+	_expect(is_equal_approx(TargetDummyScript.MAX_HEALTH - dummy.health, 24.0), "Survivors power scales outgoing health damage")
+	dummy.reset_full()
+	DamageResolverScript.apply(dummy, survivor_packet, Vector2.RIGHT)
+	_expect(is_equal_approx(TargetDummyScript.MAX_HEALTH - dummy.health, 24.0), "reused packets do not compound Survivors power")
+	survivor_source.free()
 	dummy.queue_free()
 	await process_frame
 

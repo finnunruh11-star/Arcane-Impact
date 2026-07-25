@@ -134,6 +134,10 @@ func set_encounter(wave: int, enemies_remaining: int) -> void:
 	_encounter_label.text = "RELIQUARY  /  WAVE %d  /  %d REMAIN" % [wave, enemies_remaining]
 
 
+func set_survivor_encounter(level: int, enemies_alive: int) -> void:
+	_encounter_label.text = "HORDE  /  LV.%d  /  %d ACTIVE" % [level, enemies_alive]
+
+
 func announce(message: String) -> void:
 	_announcement.text = message
 	_announcement.modulate.a = 1.0

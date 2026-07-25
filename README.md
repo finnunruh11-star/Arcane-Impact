@@ -1,12 +1,15 @@
 # Arcane Impact
 
 Arcane Impact is a clean-room Godot 4.7.1 prototype for a controller-first,
-top-down action roguelite. It shares no source code or assets with PVP_DIMIR.
+arena-survival action roguelite. It shares no source code or assets with PVP_DIMIR.
 
 ## Current milestone
 
 The current playable build opens on a four-hero roster and sends the selected
-hero into escalating waves in the Shattered Reliquary.
+hero into a ten-minute run in the Shattered Reliquary. Enemies enter
+continuously from every edge, grow stronger over time, and drop Arcane Essence.
+Collect enough Essence to pause the horde and choose one of three stacking
+boons. Survive the full ritual to win.
 
 Kat, the Vampiric Bulwark, features:
 
@@ -43,10 +46,12 @@ Fin, the Shadow Artificer, features:
 
 All four slices include:
 
-- three active enemy profiles with readable collision-matched telegraphs;
+- automatic nearest-target primary attacks and player-controlled active skills;
+- three continuously spawning enemy profiles with readable collision-matched telegraphs;
+- Arcane Essence pickups, levels, three-choice boons, a run timer, and kill count;
 - sprite-sheet VFX, layered synthesized SFX, hit-stop, camera trauma, flash,
   floating damage, and Xbox rumble;
-- controller-aware HUD glyphs and escalating wave recovery.
+- controller-aware HUD glyphs and a retry/roster run summary.
 
 ## Controls
 
@@ -55,14 +60,19 @@ All four slices include:
 | Action | Keyboard and mouse | Xbox controller |
 | --- | --- | --- |
 | Select hero | A/D, arrows, mouse, or 1/2/3/4 | Left stick or D-pad |
-| Deploy | Enter, Space, F, or button click | A or X |
+| Begin run | Enter, Space, F, or button click | A or X |
 
 ### Shared combat
 
 | Action | Keyboard and mouse | Xbox controller |
 | --- | --- | --- |
-| Move / aim | WASD / mouse | Left stick / right stick |
+| Move | WASD | Left stick |
+| Choose level boon | 1/2/3 or mouse | D-pad / left stick and A |
+| Return to roster | Escape | Menu |
 | Collision debug | Tab | D-pad up |
+
+Primary attacks automatically aim at the closest living enemy. The existing
+hero ability inputs remain available for active decisions during the run.
 
 ### Kat
 
@@ -142,6 +152,7 @@ godot --headless --path . --script res://tests/soak_sniff_slice.gd
 godot --headless --path . --script res://tests/soak_nad_slice.gd
 godot --headless --path . --script res://tests/soak_fin_slice.gd
 godot --headless --path . --script res://tests/test_roster_navigation.gd
+godot --headless --path . --script res://tests/test_survivor_run.gd
 ```
 
 This prototype is not currently licensed for redistribution.
