@@ -2,6 +2,8 @@ class_name FinPlayer
 extends CharacterBody2D
 
 
+const SurvivorAbilityStateScript := preload("res://scripts/survivors/survivor_ability_state.gd")
+
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
 signal audio_requested(cue: StringName, power: float)
@@ -78,6 +80,7 @@ var mutivarg_cooldown := 0.0
 var umbral_step_cooldown := 0.0
 
 var _form := Form.NIGHTBLADE
+var _previous_form := Form.NIGHTBLADE
 var _state := State.FREE
 var _state_time := 0.0
 var _active_action: StringName = &""
@@ -96,6 +99,15 @@ var _knockback_velocity := Vector2.ZERO
 var _dash_direction := Vector2.RIGHT
 var _dash_speed := 0.0
 var _invulnerable_time := 0.0
+var _signature_echo_queue: Array[int] = []
+var _signature_echo_timer := 0.0
+var _queued_tool_form := -1
+var _umbral_speed_multiplier := UMBRAL_STEP_SPEED_MULTIPLIER
+var _umbral_origin := Vector2.ZERO
+var _umbral_direction := Vector2.ZERO
+var _umbral_retrace_available := false
+var _umbral_retrace_time := 0.0
+var _umbral_crossed_ids: Dictionary = {}
 
 var _form_input_held := false
 var _form_hold_time := 0.0
@@ -119,6 +131,8 @@ var _traps: Array[FinShadowTrap] = []
 var _survivor_mode := false
 var _survivor_target: Node2D
 var _survivor_power_multiplier := 1.0
+var _survivor_max_health_multiplier := 1.0
+var _survivor_abilities = SurvivorAbilityStateScript.new()
 
 
 func _ready() -> void:
@@ -177,6 +191,45 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
+	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
+
+
+func is_survivor_ability_unlocked(slot: StringName) -> bool:
+	return not _survivor_mode or _survivor_abilities.is_unlocked(slot)
+
+
+func get_survivor_ability_rank(slot: StringName) -> int:
+	return _survivor_abilities.get_rank(slot)
+
+
+func get_survivor_ability_tier(slot: StringName) -> int:
+	return _survivor_abilities.get_tier(slot) if _survivor_mode else 3
+
+
+func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
+
+
+func get_max_health() -> float:
+	return MAX_HEALTH * _survivor_max_health_multiplier
+
+
+func apply_survivor_fortitude(amount: float) -> void:
+	var previous_max := get_max_health()
+	_survivor_max_health_multiplier += maxf(0.0, amount)
+	health += get_max_health() - previous_max
+	stats_changed.emit()
+
+
+func _survivor_cooldown_delta(delta: float, slot: StringName) -> float:
+	if not _survivor_mode:
+		return delta
+	if not _survivor_abilities.is_unlocked(slot):
+		return 0.0
+	return delta / _survivor_abilities.get_cooldown(slot)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_set_using_gamepad(false)
@@ -202,13 +255,13 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_timers(delta: float) -> void:
-	veil_cooldown = maxf(0.0, veil_cooldown - delta)
-	shadow_lunge_cooldown = maxf(0.0, shadow_lunge_cooldown - delta)
-	quick_crank_cooldown = maxf(0.0, quick_crank_cooldown - delta)
-	scatterbolt_cooldown = maxf(0.0, scatterbolt_cooldown - delta)
-	shadow_bind_cooldown = maxf(0.0, shadow_bind_cooldown - delta)
-	mutivarg_cooldown = maxf(0.0, mutivarg_cooldown - delta)
-	umbral_step_cooldown = maxf(0.0, umbral_step_cooldown - delta)
+	veil_cooldown = maxf(0.0, veil_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
+	shadow_lunge_cooldown = maxf(0.0, shadow_lunge_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
+	quick_crank_cooldown = maxf(0.0, quick_crank_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
+	scatterbolt_cooldown = maxf(0.0, scatterbolt_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
+	shadow_bind_cooldown = maxf(0.0, shadow_bind_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
+	mutivarg_cooldown = maxf(0.0, mutivarg_cooldown - _survivor_cooldown_delta(delta, &"signature"))
+	umbral_step_cooldown = maxf(0.0, umbral_step_cooldown - _survivor_cooldown_delta(delta, &"evade"))
 	_invulnerable_time = maxf(0.0, _invulnerable_time - delta)
 	_veil_time = maxf(0.0, _veil_time - delta)
 	_smoke_veil_time = maxf(0.0, _smoke_veil_time - delta)
@@ -219,6 +272,10 @@ func _tick_timers(delta: float) -> void:
 	_tick_crossbow_reload(delta)
 	_tick_charge_resources(delta)
 	_traps = _traps.filter(func(trap: FinShadowTrap) -> bool: return is_instance_valid(trap))
+	_tick_signature_echoes(delta)
+	_umbral_retrace_time = maxf(0.0, _umbral_retrace_time - delta)
+	if _umbral_retrace_time <= 0.0:
+		_umbral_retrace_available = false
 
 
 func _tick_crossbow_reload(delta: float) -> void:
@@ -232,26 +289,36 @@ func _tick_crossbow_reload(delta: float) -> void:
 
 
 func _tick_charge_resources(delta: float) -> void:
-	if _throwing_daggers < 3:
+	var utility_tier := get_survivor_ability_tier(&"ability_1")
+	var tool_tier := get_survivor_ability_tier(&"ability_2")
+	var potion_capacity := [1, 2, 3, 4, 5][utility_tier - 1] as int
+	var dagger_capacity := [1, 2, 3, 4, 5][tool_tier - 1] as int
+	var smoke_capacity := [1, 2, 2, 3, 5][tool_tier - 1] as int
+	var utility_recharge_scale := [1.35, 1.0, 1.0, 0.76, 0.54][utility_tier - 1] as float
+	var tool_recharge_scale := [1.35, 0.78, 1.0, 0.72, 0.50][tool_tier - 1] as float
+	_throwing_daggers = mini(_throwing_daggers, dagger_capacity)
+	_potions = mini(_potions, potion_capacity)
+	_smoke_bombs = mini(_smoke_bombs, smoke_capacity)
+	if _throwing_daggers < dagger_capacity:
 		_dagger_recharge += delta
-		if _dagger_recharge >= DAGGER_CHARGE_TIME:
-			_dagger_recharge -= DAGGER_CHARGE_TIME
+		if _dagger_recharge >= DAGGER_CHARGE_TIME * tool_recharge_scale:
+			_dagger_recharge -= DAGGER_CHARGE_TIME * tool_recharge_scale
 			_throwing_daggers += 1
 			stats_changed.emit()
 	else:
 		_dagger_recharge = 0.0
-	if _potions < 3:
+	if _potions < potion_capacity:
 		_potion_recharge += delta
-		if _potion_recharge >= POTION_CHARGE_TIME:
-			_potion_recharge -= POTION_CHARGE_TIME
+		if _potion_recharge >= POTION_CHARGE_TIME * utility_recharge_scale:
+			_potion_recharge -= POTION_CHARGE_TIME * utility_recharge_scale
 			_potions += 1
 			stats_changed.emit()
 	else:
 		_potion_recharge = 0.0
-	if _smoke_bombs < 2:
+	if _smoke_bombs < smoke_capacity:
 		_smoke_recharge += delta
-		if _smoke_recharge >= SMOKE_CHARGE_TIME:
-			_smoke_recharge -= SMOKE_CHARGE_TIME
+		if _smoke_recharge >= SMOKE_CHARGE_TIME * tool_recharge_scale:
+			_smoke_recharge -= SMOKE_CHARGE_TIME * tool_recharge_scale
 			_smoke_bombs += 1
 			stats_changed.emit()
 	else:
@@ -290,6 +357,9 @@ func _update_aim() -> void:
 
 func _update_form_input(delta: float) -> void:
 	if _state == State.DEAD or _state == State.STAGGER:
+		_cancel_form_input()
+		return
+	if not is_survivor_ability_unlocked(&"ultimate"):
 		_cancel_form_input()
 		return
 	if Input.is_action_just_pressed(&"ultimate") and _state == State.FREE:
@@ -334,20 +404,31 @@ func cycle_form() -> void:
 
 func select_form(next_form: int) -> void:
 	var selected := clampi(next_form, Form.NIGHTBLADE, Form.ARTIFICER)
+	if _survivor_mode:
+		selected = mini(selected, [Form.NIGHTBLADE, Form.ARBALEST, Form.HUNTSMAN, Form.ARTIFICER][mini(3, get_survivor_ability_tier(&"ultimate"))])
 	if selected == _form:
 		return
+	var departing_form := _form
 	if _form == Form.NIGHTBLADE:
 		_veil_time = 0.0
+	_previous_form = departing_form
 	_form = selected
 	_combo_stage = 0
 	_combo_buffered = false
 	_attack_area.monitoring = false
-	_state_time = 0.14
+	var form_tier := get_survivor_ability_tier(&"ultimate")
+	_state_time = [0.14, 0.09, 0.14, 0.11, 0.08][form_tier - 1] as float
 	_set_state(State.FORM_SWITCH)
 	form_changed.emit(_form, get_form_label())
 	announcement_requested.emit(get_form_label())
 	effect_requested.emit(&"fin_switch", global_position, aim_direction, 0.82)
 	audio_requested.emit(&"fin_switch", float(_form) / 3.0)
+	if form_tier == 4:
+		_fire_form_basic(departing_form, &"ultimate")
+	elif form_tier >= 5:
+		for form: int in Form.size():
+			_fire_form_basic(form, &"ultimate")
+		effect_requested.emit(&"fin_switch", global_position, aim_direction, 1.55)
 	stats_changed.emit()
 
 
@@ -376,8 +457,9 @@ func _update_state(delta: float) -> void:
 				_combo_buffered = false
 				_return_to_free_or_buffer()
 		State.SIGNATURE_CHARGE:
-			_signature_charge = minf(1.0, _signature_charge + delta / _signature_charge_duration)
-			if not Input.is_action_pressed(&"signature") or _signature_charge >= 1.0:
+			var maximum_charge := [0.0, 0.68, 1.0, 1.0, 1.0][get_survivor_ability_tier(&"signature") - 1] as float
+			_signature_charge = minf(maximum_charge, _signature_charge + delta / _signature_charge_duration)
+			if not Input.is_action_pressed(&"signature") or _signature_charge >= maximum_charge:
 				_release_signature()
 		State.SIGNATURE_ACTIVE:
 			_apply_active_attack_hits()
@@ -395,6 +477,7 @@ func _update_state(delta: float) -> void:
 				_state_time = 0.13
 				_set_state(State.ABILITY_RECOVERY)
 		State.UMBRAL_STEP:
+			_tick_umbral_crossings()
 			_state_time -= delta
 			if _state_time <= 0.0:
 				_end_umbral_step()
@@ -407,6 +490,12 @@ func _update_state(delta: float) -> void:
 
 
 func _return_to_free_or_buffer() -> void:
+	if _queued_tool_form >= 0:
+		var next_form := _queued_tool_form
+		_queued_tool_form = -1
+		_set_state(State.FREE)
+		select_form(next_form)
+		return
 	if _primary_buffer > 0.0 and _state != State.STAGGER:
 		_primary_buffer = 0.0
 		_begin_primary(0)
@@ -417,13 +506,13 @@ func _return_to_free_or_buffer() -> void:
 func _handle_free_inputs() -> void:
 	if _form_input_held:
 		return
-	if Input.is_action_just_pressed(&"evade") and umbral_step_cooldown <= 0.0:
+	if Input.is_action_just_pressed(&"evade") and is_survivor_ability_unlocked(&"evade") and (umbral_step_cooldown <= 0.0 or _umbral_retrace_available):
 		_begin_umbral_step()
-	elif Input.is_action_just_pressed(&"ability_1"):
+	elif Input.is_action_just_pressed(&"ability_1") and is_survivor_ability_unlocked(&"ability_1"):
 		_use_ability_1()
-	elif Input.is_action_just_pressed(&"ability_2"):
+	elif Input.is_action_just_pressed(&"ability_2") and is_survivor_ability_unlocked(&"ability_2"):
 		_use_ability_2()
-	elif Input.is_action_just_pressed(&"signature"):
+	elif Input.is_action_just_pressed(&"signature") and is_survivor_ability_unlocked(&"signature"):
 		_begin_signature()
 	elif Input.is_action_just_pressed(&"primary") or _primary_buffer > 0.0:
 		_primary_buffer = 0.0
@@ -467,7 +556,7 @@ func _update_movement() -> void:
 		State.SIGNATURE_RECOVERY, State.ABILITY_RECOVERY, State.FORM_SWITCH:
 			state_speed = 0.68
 		State.UMBRAL_STEP:
-			velocity = move_input.normalized() * MOVE_SPEED * UMBRAL_STEP_SPEED_MULTIPLIER
+			velocity = (_umbral_direction if _active_action == &"umbral_retrace" else move_input.normalized()) * MOVE_SPEED * _umbral_speed_multiplier
 			_knockback_velocity = Vector2.ZERO
 			return
 		State.SHADOW_DASH:
@@ -538,6 +627,7 @@ func _resolve_primary() -> void:
 
 
 func _begin_signature() -> void:
+	var tier := get_survivor_ability_tier(&"signature")
 	match _form:
 		Form.NIGHTBLADE:
 			_active_action = &"mind_pierce"
@@ -559,8 +649,11 @@ func _begin_signature() -> void:
 			_active_action = &"mutivarg_field"
 			_signature_charge_duration = 1.02
 			audio_requested.emit(&"fin_mutivarg_charge", 0.58)
+	_signature_charge_duration *= [0.01, 0.56, 1.0, 1.0, 0.88][tier - 1] as float
 	_signature_charge = 0.0
 	_set_state(State.SIGNATURE_CHARGE)
+	if tier == 1:
+		_release_signature()
 
 
 func _release_signature() -> void:
@@ -575,7 +668,7 @@ func _release_signature() -> void:
 			audio_requested.emit(&"fin_mind_pierce", _signature_charge)
 			_set_state(State.SIGNATURE_ACTIVE)
 		&"breach_bolt":
-			_spawn_projectile(FinProjectile.Kind.BREACH_BOLT, aim_direction, _signature_charge)
+			_spawn_projectile(FinProjectile.Kind.BREACH_BOLT, aim_direction, _signature_charge, &"signature")
 			_spend_crossbow_round(lerpf(2.75, 3.45, _signature_charge))
 			_apply_crossbow_recoil(lerpf(410.0, 710.0, _signature_charge))
 			effect_requested.emit(&"fin_shot", global_position + aim_direction * 48.0, aim_direction, 1.25 + _signature_charge * 0.58)
@@ -583,7 +676,7 @@ func _release_signature() -> void:
 			_state_time = 0.52
 			_set_state(State.SIGNATURE_RECOVERY)
 		&"power_arrow":
-			_spawn_projectile(FinProjectile.Kind.POWER_ARROW, aim_direction, _signature_charge)
+			_spawn_projectile(FinProjectile.Kind.POWER_ARROW, aim_direction, _signature_charge, &"signature")
 			effect_requested.emit(&"fin_shot", global_position + aim_direction * 45.0, aim_direction, 0.88 + _signature_charge * 0.44)
 			audio_requested.emit(&"fin_bow", 0.52 + _signature_charge * 0.40)
 			_state_time = 0.25
@@ -593,14 +686,61 @@ func _release_signature() -> void:
 				FinField.Kind.MUTIVARG,
 				global_position + aim_direction * lerpf(190.0, 315.0, _signature_charge),
 				lerpf(120.0, 205.0, _signature_charge),
-				_signature_charge
+				_signature_charge,
+				&"signature"
 			)
 			mutivarg_cooldown = lerpf(5.5, 8.0, _signature_charge)
 			effect_requested.emit(&"fin_tool", global_position + aim_direction * 220.0, aim_direction, 1.2 + _signature_charge * 0.6)
 			audio_requested.emit(&"fin_mutivarg", _signature_charge)
 			_state_time = 0.34
 			_set_state(State.SIGNATURE_RECOVERY)
+	_queue_signature_echoes()
 	stats_changed.emit()
+
+
+func _queue_signature_echoes() -> void:
+	var tier := get_survivor_ability_tier(&"signature")
+	if tier == 4 and _signature_charge >= 0.55 and _previous_form != _form:
+		_signature_echo_queue.append(_previous_form)
+	elif tier >= 5:
+		for form: int in Form.size():
+			if form != _form:
+				_signature_echo_queue.append(form)
+	_signature_echo_timer = 0.08
+
+
+func _tick_signature_echoes(delta: float) -> void:
+	if _signature_echo_queue.is_empty():
+		return
+	_signature_echo_timer -= delta
+	if _signature_echo_timer > 0.0:
+		return
+	var echo_form := int(_signature_echo_queue.pop_front())
+	_cast_signature_echo(echo_form)
+	_signature_echo_timer = 0.13
+
+
+func _cast_signature_echo(form: int) -> void:
+	match form:
+		Form.NIGHTBLADE:
+			for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+				if not enemy_node is Node2D:
+					continue
+				var target := enemy_node as Node2D
+				var to_target := target.global_position - global_position
+				if to_target.length() > 178.0 or aim_direction.dot(to_target.normalized()) < 0.38:
+					continue
+				var packet := DamagePacket.fin_mind_pierce(self, _signature_charge, 0, false)
+				packet.health_damage *= 0.62
+				packet.resolve_damage *= 0.72
+				DamageResolver.apply(target, packet, to_target.normalized())
+		Form.ARBALEST:
+			_spawn_projectile(FinProjectile.Kind.BREACH_BOLT, aim_direction.rotated(-0.07), _signature_charge * 0.82, &"signature")
+		Form.HUNTSMAN:
+			_spawn_projectile(FinProjectile.Kind.POWER_ARROW, aim_direction.rotated(0.07), _signature_charge * 0.82, &"signature")
+		Form.ARTIFICER:
+			_spawn_field(FinField.Kind.MUTIVARG, global_position + aim_direction * 210.0, 132.0 + 46.0 * _signature_charge, _signature_charge * 0.72, &"signature")
+	effect_requested.emit(&"fin_switch", global_position, aim_direction, 0.76)
 
 
 func _apply_active_attack_hits() -> void:
@@ -654,17 +794,25 @@ func _resolve_mind_pierce(target: Node2D) -> void:
 
 
 func _resolve_shadow_lunge_hit(target: Node2D) -> void:
+	var tier := get_survivor_ability_tier(&"ability_2")
 	var backstab := _is_backstab(target) or _veil_time > 0.0
 	var packet := DamagePacket.fin_dagger(self, 1, 1.35 if backstab else 1.0)
+	packet.survivor_ability_slot = &"ability_2"
 	var dealt := DamageResolver.apply_with_result(target, packet, _dash_direction)
 	if target.has_method(&"apply_pierce_mark"):
-		target.call(&"apply_pierce_mark", 2 if backstab else 1, 8.0)
+		target.call(&"apply_pierce_mark", (2 if backstab else 1) + (1 if tier >= 4 else 0), 8.0)
+	if tier >= 5:
+		var echo := DamagePacket.fin_dagger(self, 2, 0.82)
+		echo.survivor_ability_slot = &"ability_2"
+		DamageResolver.apply(target, echo, -_dash_direction)
 	if dealt > 0.0:
 		combat_impact.emit(target.global_position, _dash_direction, packet, 0.48 if backstab else 0.34)
+		_replenish_tactical_supply_on_takedown(target)
 	_veil_time = 0.0
 
 
 func _use_ability_1() -> void:
+	var state_before := _state
 	match _form:
 		Form.NIGHTBLADE:
 			_cast_umbral_veil()
@@ -674,9 +822,12 @@ func _use_ability_1() -> void:
 			_cast_shadow_bind()
 		Form.ARTIFICER:
 			use_potion(_choose_potion())
+	if get_survivor_ability_tier(&"ability_1") >= 5 and _state != state_before:
+		_echo_different_utility(_form)
 
 
 func _use_ability_2() -> void:
+	var state_before := _state
 	match _form:
 		Form.NIGHTBLADE:
 			_begin_shadow_lunge()
@@ -686,14 +837,17 @@ func _use_ability_2() -> void:
 			_throw_dagger()
 		Form.ARTIFICER:
 			_throw_smoke_bomb()
+	if get_survivor_ability_tier(&"ability_2") >= 4 and _state != state_before:
+		_queued_tool_form = (_form + 1) % Form.size()
 
 
 func _cast_umbral_veil() -> void:
 	if veil_cooldown > 0.0:
 		return
 	veil_cooldown = 8.0
-	_veil_time = 3.4
-	_invulnerable_time = maxf(_invulnerable_time, 0.26)
+	var tier := get_survivor_ability_tier(&"ability_1")
+	_veil_time = [1.45, 2.35, 3.4, 4.4, 5.4][tier - 1] as float
+	_invulnerable_time = maxf(_invulnerable_time, [0.0, 0.12, 0.26, 0.36, 0.48][tier - 1] as float)
 	effect_requested.emit(&"fin_shadow", global_position, aim_direction, 1.15)
 	audio_requested.emit(&"fin_veil", 0.72)
 	announcement_requested.emit("UMBRAL VEIL")
@@ -708,9 +862,11 @@ func _begin_shadow_lunge() -> void:
 	shadow_lunge_cooldown = 4.2
 	_dash_direction = _movement_or_aim_direction()
 	aim_direction = _dash_direction
-	_state_time = 0.16
-	_dash_speed = 245.0 / _state_time
-	_invulnerable_time = 0.24
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var distances := [142.0, 192.0, 245.0, 292.0, 342.0]
+	_state_time = [0.12, 0.14, 0.16, 0.18, 0.20][tier - 1] as float
+	_dash_speed = (distances[tier - 1] as float) / _state_time
+	_invulnerable_time = [0.08, 0.15, 0.24, 0.32, 0.42][tier - 1] as float
 	_hit_target_ids.clear()
 	_active_action = &"shadow_lunge"
 	_set_attack_rectangle(105.0, 35.0, _dash_direction)
@@ -725,12 +881,13 @@ func _begin_shadow_lunge() -> void:
 func _cast_quick_crank() -> void:
 	if quick_crank_cooldown > 0.0:
 		return
+	var tier := get_survivor_ability_tier(&"ability_1")
 	quick_crank_cooldown = 5.8
 	if _crossbow_loaded:
-		_brace_time = 3.2
+		_brace_time = [1.4, 2.2, 3.2, 4.2, 5.2][tier - 1] as float
 		announcement_requested.emit("STEADY BRACE")
 	else:
-		_crossbow_reload = minf(_crossbow_reload, 0.38)
+		_crossbow_reload = minf(_crossbow_reload, [0.90, 0.56, 0.38, 0.22, 0.10][tier - 1] as float)
 		announcement_requested.emit("QUICK CRANK")
 	audio_requested.emit(&"fin_quick_crank", 0.72)
 	_state_time = 0.21
@@ -744,8 +901,10 @@ func _cast_scatterbolt() -> void:
 			audio_requested.emit(&"fin_empty", 0.35)
 		return
 	scatterbolt_cooldown = 5.4
-	for angle_offset: float in [-0.13, 0.0, 0.13]:
-		_spawn_projectile(FinProjectile.Kind.CROSSBOW_BOLT, aim_direction.rotated(angle_offset), 0.0)
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var spreads: Array[Array] = [[0.0], [-0.08, 0.08], [-0.13, 0.0, 0.13], [-0.19, -0.065, 0.065, 0.19], [-0.25, -0.15, -0.05, 0.05, 0.15, 0.25]]
+	for angle_offset: float in spreads[tier - 1]:
+		_spawn_projectile(FinProjectile.Kind.CROSSBOW_BOLT, aim_direction.rotated(angle_offset), 0.0, &"ability_2")
 	_spend_crossbow_round(2.75)
 	_apply_crossbow_recoil(330.0)
 	effect_requested.emit(&"fin_shot", global_position + aim_direction * 44.0, aim_direction, 1.18)
@@ -757,16 +916,18 @@ func _cast_scatterbolt() -> void:
 
 func _cast_shadow_bind() -> void:
 	_traps = _traps.filter(func(trap: FinShadowTrap) -> bool: return is_instance_valid(trap))
-	if shadow_bind_cooldown > 0.0 or _traps.size() >= 2:
+	var tier := get_survivor_ability_tier(&"ability_1")
+	var maximum_traps := [1, 2, 2, 3, 4][tier - 1] as int
+	if shadow_bind_cooldown > 0.0 or _traps.size() >= maximum_traps:
 		return
 	var trap := FinShadowTrap.new()
-	trap.configure(self)
+	trap.configure(self, tier)
 	trap.position = get_parent().to_local(global_position + aim_direction * 235.0)
 	get_parent().add_child(trap)
 	_traps.append(trap)
 	shadow_bind_cooldown = 0.72
 	effect_requested.emit(&"fin_shadow", trap.global_position, aim_direction, 0.86)
-	audio_requested.emit(&"fin_trap", float(_traps.size()) / 2.0)
+	audio_requested.emit(&"fin_trap", float(_traps.size()) / float(maximum_traps))
 	_state_time = 0.18
 	_set_state(State.ABILITY_RECOVERY)
 	stats_changed.emit()
@@ -776,8 +937,11 @@ func _throw_dagger() -> void:
 	if _throwing_daggers <= 0:
 		audio_requested.emit(&"fin_empty", 0.28)
 		return
-	_throwing_daggers -= 1
-	_spawn_projectile(FinProjectile.Kind.THROWING_DAGGER, aim_direction, 0.0)
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var throw_count := mini(_throwing_daggers, 2 if tier >= 5 else 1)
+	_throwing_daggers -= throw_count
+	for index: int in throw_count:
+		_spawn_projectile(FinProjectile.Kind.THROWING_DAGGER, aim_direction.rotated((-0.055 if index == 0 else 0.055) if throw_count > 1 else 0.0), 0.0, &"ability_2")
 	effect_requested.emit(&"fin_cut", global_position + aim_direction * 38.0, aim_direction, 0.48)
 	audio_requested.emit(&"fin_throw", 0.48)
 	_state_time = 0.12
@@ -788,7 +952,7 @@ func _throw_dagger() -> void:
 func _choose_potion() -> int:
 	var direction := Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
 	if direction.length_squared() < 0.25:
-		return Potion.MENDING if health < MAX_HEALTH * 0.68 else Potion.QUICKSILVER
+		return Potion.MENDING if health < get_max_health() * 0.68 else Potion.QUICKSILVER
 	if absf(direction.y) > absf(direction.x):
 		return Potion.MENDING if direction.y < 0.0 else Potion.VOLATILE
 	return Potion.QUICKSILVER if direction.x > 0.0 else Potion.SHADE
@@ -800,20 +964,21 @@ func use_potion(potion: int) -> bool:
 	var selected := clampi(potion, Potion.MENDING, Potion.VOLATILE)
 	_potions -= 1
 	_last_potion = selected
+	var tier := get_survivor_ability_tier(&"ability_1")
 	match selected:
 		Potion.MENDING:
-			heal(54.0)
+			heal([28.0, 40.0, 54.0, 72.0, 92.0][tier - 1] as float)
 			announcement_requested.emit("MENDING DRAUGHT")
 		Potion.QUICKSILVER:
-			_haste_time = 5.2
-			resolve = minf(MAX_RESOLVE, resolve + 24.0)
+			_haste_time = [2.4, 3.8, 5.2, 6.8, 8.2][tier - 1] as float
+			resolve = minf(MAX_RESOLVE, resolve + ([12.0, 18.0, 24.0, 34.0, 46.0][tier - 1] as float))
 			announcement_requested.emit("QUICKSILVER TONIC")
 		Potion.SHADE:
-			_veil_time = maxf(_veil_time, 2.8)
-			_invulnerable_time = maxf(_invulnerable_time, 0.18)
+			_veil_time = maxf(_veil_time, [1.1, 1.9, 2.8, 3.8, 5.0][tier - 1] as float)
+			_invulnerable_time = maxf(_invulnerable_time, [0.0, 0.08, 0.18, 0.30, 0.42][tier - 1] as float)
 			announcement_requested.emit("SHADE TONIC")
 		Potion.VOLATILE:
-			_spawn_projectile(FinProjectile.Kind.FLASK, aim_direction, 0.0)
+			_spawn_projectile(FinProjectile.Kind.FLASK, aim_direction, (0.35 if tier >= 4 else 0.0), &"ability_1")
 			announcement_requested.emit("VOLATILE PHIAL")
 	effect_requested.emit(&"fin_tool", global_position, aim_direction, 0.82)
 	audio_requested.emit(&"fin_potion", float(selected) / 3.0)
@@ -826,9 +991,13 @@ func use_potion(potion: int) -> bool:
 func _throw_smoke_bomb() -> void:
 	if _smoke_bombs <= 0:
 		return
-	_smoke_bombs -= 1
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var throw_count := mini(_smoke_bombs, 2 if tier >= 5 else 1)
+	_smoke_bombs -= throw_count
 	var at := global_position + aim_direction * 92.0
-	_spawn_field(FinField.Kind.ALCHEMICAL_SMOKE, at, 138.0, 0.62)
+	_spawn_field(FinField.Kind.ALCHEMICAL_SMOKE, at, 138.0 + 16.0 * float(maxi(0, tier - 3)), 0.62 + 0.08 * float(maxi(0, tier - 3)), &"ability_2")
+	if throw_count > 1:
+		_spawn_field(FinField.Kind.ALCHEMICAL_SMOKE, global_position - aim_direction * 92.0, 154.0, 0.76, &"ability_2")
 	receive_smoke_veil(0.42)
 	effect_requested.emit(&"fin_smoke", at, aim_direction, 1.32)
 	audio_requested.emit(&"fin_smoke", 0.78)
@@ -838,16 +1007,31 @@ func _throw_smoke_bomb() -> void:
 
 
 func _begin_umbral_step() -> void:
-	if umbral_step_cooldown > 0.0:
+	var tier := get_survivor_ability_tier(&"evade")
+	var retracing := tier >= 5 and _umbral_retrace_available
+	if umbral_step_cooldown > 0.0 and not retracing:
 		return
-	umbral_step_cooldown = UMBRAL_STEP_COOLDOWN
-	_state_time = UMBRAL_STEP_DURATION
-	_active_action = &"umbral_step"
+	if retracing:
+		_active_action = &"umbral_retrace"
+		_umbral_retrace_available = false
+		_umbral_retrace_time = 0.0
+		var to_origin := _umbral_origin - global_position
+		_umbral_direction = to_origin.normalized() if not to_origin.is_zero_approx() else -aim_direction
+		_umbral_speed_multiplier = 2.35
+		_state_time = maxf(0.12, to_origin.length() / (MOVE_SPEED * _umbral_speed_multiplier))
+	else:
+		umbral_step_cooldown = UMBRAL_STEP_COOLDOWN
+		_state_time = [0.52, 0.84, UMBRAL_STEP_DURATION, 1.45, 1.65][tier - 1] as float
+		_umbral_speed_multiplier = [1.34, 1.62, UMBRAL_STEP_SPEED_MULTIPLIER, 2.05, 2.18][tier - 1] as float
+		_active_action = &"umbral_step"
+		_umbral_origin = global_position
+		_umbral_direction = _movement_or_aim_direction()
+		_umbral_crossed_ids.clear()
 	_attack_area.monitoring = false
 	_hit_target_ids.clear()
 	_knockback_velocity = Vector2.ZERO
-	_invulnerable_time = maxf(_invulnerable_time, 0.16)
-	collision_mask = 4
+	_invulnerable_time = maxf(_invulnerable_time, [0.0, 0.08, 0.16, 0.26, 0.38][tier - 1] as float)
+	collision_mask = 4 if tier >= 2 else 2 | 4
 	effect_requested.emit(&"fin_step", global_position, _movement_or_aim_direction(), 1.12)
 	audio_requested.emit(&"fin_umbral_step", 0.82)
 	announcement_requested.emit("UMBRAL STEP")
@@ -856,10 +1040,51 @@ func _begin_umbral_step() -> void:
 
 
 func _end_umbral_step() -> void:
+	var tier := get_survivor_ability_tier(&"evade")
+	if _active_action == &"umbral_retrace":
+		_detonate_umbral_marks()
+	elif tier >= 5:
+		_umbral_retrace_available = true
+		_umbral_retrace_time = 6.0
 	collision_mask = 2 | 4
 	velocity = Vector2.ZERO
 	_set_state(State.FREE)
 	stats_changed.emit()
+
+
+func _tick_umbral_crossings() -> void:
+	if get_survivor_ability_tier(&"evade") < 4:
+		return
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D:
+			continue
+		var target := enemy_node as Node2D
+		if global_position.distance_to(target.global_position) > 54.0:
+			continue
+		var target_id := target.get_instance_id()
+		if _umbral_crossed_ids.has(target_id):
+			continue
+		_umbral_crossed_ids[target_id] = true
+		if target.has_method(&"apply_pierce_mark"):
+			target.call(&"apply_pierce_mark", 2 if get_survivor_ability_tier(&"evade") >= 5 else 1, 9.0)
+		if target.has_method(&"apply_temporary_slow"):
+			target.call(&"apply_temporary_slow", 0.58, 2.4)
+
+
+func _detonate_umbral_marks() -> void:
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D or not _umbral_crossed_ids.has(enemy_node.get_instance_id()):
+			continue
+		var target := enemy_node as Node2D
+		var marks := int(target.call(&"consume_pierce_marks", MAX_PIERCE_MARKS)) if target.has_method(&"consume_pierce_marks") else 0
+		if marks <= 0:
+			continue
+		var direction := (target.global_position - global_position).normalized()
+		var packet := DamagePacket.fin_mind_pierce(self, 0.55, marks, false)
+		packet.survivor_ability_slot = &"evade"
+		packet.health_damage *= 0.72
+		DamageResolver.apply(target, packet, direction)
+		effect_requested.emit(&"fin_shadow", target.global_position, direction, 1.0 + 0.12 * float(marks))
 
 
 func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
@@ -904,14 +1129,14 @@ func _apply_health_damage(amount: float) -> void:
 func heal(amount: float) -> void:
 	if amount <= 0.0 or _state == State.DEAD:
 		return
-	health = minf(MAX_HEALTH, health + amount)
+	health = minf(get_max_health(), health + amount)
 	stats_changed.emit()
 
 
 func restore_supplies() -> void:
-	_throwing_daggers = 3
-	_potions = 3
-	_smoke_bombs = 2
+	_throwing_daggers = [1, 2, 3, 4, 5][get_survivor_ability_tier(&"ability_2") - 1] as int
+	_potions = [1, 2, 3, 4, 5][get_survivor_ability_tier(&"ability_1") - 1] as int
+	_smoke_bombs = [1, 2, 2, 3, 5][get_survivor_ability_tier(&"ability_2") - 1] as int
 	_crossbow_loaded = true
 	_crossbow_reload = 0.0
 	ward = minf(MAX_WARD, ward + 22.0)
@@ -922,9 +1147,9 @@ func receive_smoke_veil(duration: float) -> void:
 	_smoke_veil_time = maxf(_smoke_veil_time, duration)
 
 
-func _spawn_projectile(kind: int, direction: Vector2, charge: float) -> void:
+func _spawn_projectile(kind: int, direction: Vector2, charge: float, ability_slot := StringName()) -> void:
 	var projectile := FinProjectile.new()
-	projectile.configure(self, kind as FinProjectile.Kind, direction, charge)
+	projectile.configure(self, kind as FinProjectile.Kind, direction, charge, ability_slot)
 	projectile.position = get_parent().to_local(global_position + direction.normalized() * 42.0)
 	get_parent().add_child(projectile)
 
@@ -935,7 +1160,8 @@ func on_fin_projectile_hit(
 	direction: Vector2,
 	kind: int,
 	charge: float,
-	distance: float
+	distance: float,
+	ability_slot: StringName
 ) -> void:
 	var packet: DamagePacket
 	var mark_count := 0
@@ -958,30 +1184,34 @@ func on_fin_projectile_hit(
 			packet = DamagePacket.fin_rod(self, current_resolve)
 			mark_count = 1
 		FinProjectile.Kind.FLASK:
-			call_deferred(&"_spawn_field", FinField.Kind.ALCHEMICAL_SMOKE, at, 118.0, 0.48)
+			call_deferred(&"_spawn_field", FinField.Kind.ALCHEMICAL_SMOKE, at, 118.0, 0.48, ability_slot)
 			return
 		_:
 			return
+	if not ability_slot.is_empty():
+		packet.survivor_ability_slot = ability_slot
 	var dealt := DamageResolver.apply_with_result(target, packet, direction)
 	if mark_count > 0 and target.has_method(&"apply_pierce_mark"):
-		target.call(&"apply_pierce_mark", mark_count, 8.0)
+		target.call(&"apply_pierce_mark", mark_count + (1 if ability_slot == &"ability_2" and get_survivor_ability_tier(&"ability_2") >= 4 else 0), 8.0)
 	if kind == FinProjectile.Kind.POWER_ARROW and charge >= 0.78 and target.has_method(&"apply_control_lock"):
 		target.call(&"apply_control_lock", 0.38 + charge * 0.28)
 	if dealt > 0.0:
 		var intensity := clampf(packet.health_damage / 126.0 + float(consumed_marks) * 0.05, 0.18, 1.0)
 		combat_impact.emit(at, direction, packet, intensity)
 		effect_requested.emit(&"fin_shot" if kind != FinProjectile.Kind.ROD_BOLT else &"fin_tool", at, direction, 0.64 + intensity * 0.58)
+		if ability_slot == &"ability_2":
+			_replenish_tactical_supply_on_takedown(target)
 	stats_changed.emit()
 
 
-func on_fin_projectile_expired(kind: int, at: Vector2, _direction: Vector2, _charge: float) -> void:
+func on_fin_projectile_expired(kind: int, at: Vector2, _direction: Vector2, _charge: float, ability_slot: StringName) -> void:
 	if kind == FinProjectile.Kind.FLASK:
-		call_deferred(&"_spawn_field", FinField.Kind.ALCHEMICAL_SMOKE, at, 118.0, 0.48)
+		call_deferred(&"_spawn_field", FinField.Kind.ALCHEMICAL_SMOKE, at, 118.0, 0.48, ability_slot)
 
 
-func _spawn_field(kind: int, at: Vector2, radius: float, power: float) -> void:
+func _spawn_field(kind: int, at: Vector2, radius: float, power: float, ability_slot := StringName()) -> void:
 	var field := FinField.new()
-	field.configure(self, kind as FinField.Kind, radius, power)
+	field.configure(self, kind as FinField.Kind, radius, power, ability_slot)
 	field.position = get_parent().to_local(at)
 	get_parent().add_child(field)
 
@@ -1010,6 +1240,55 @@ func on_shadow_trap_triggered(trap: FinShadowTrap, target: Node2D, at: Vector2) 
 func on_shadow_trap_removed(trap: FinShadowTrap) -> void:
 	_traps.erase(trap)
 	stats_changed.emit()
+
+
+func _echo_different_utility(source_form: int) -> void:
+	match source_form:
+		Form.NIGHTBLADE:
+			_crossbow_loaded = true
+			_crossbow_reload = 0.0
+			_brace_time = maxf(_brace_time, 2.2)
+		Form.ARBALEST:
+			ward = minf(MAX_WARD, ward + 16.0)
+			_haste_time = maxf(_haste_time, 3.0)
+		Form.HUNTSMAN:
+			heal(32.0)
+			_potions = mini(5, _potions + 1)
+		Form.ARTIFICER:
+			_veil_time = maxf(_veil_time, 2.4)
+			_invulnerable_time = maxf(_invulnerable_time, 0.20)
+	effect_requested.emit(&"fin_tool", global_position, aim_direction, 1.08)
+
+
+func _replenish_tactical_supply_on_takedown(target: Node2D) -> void:
+	if get_survivor_ability_tier(&"ability_2") < 5 or not target.has_method(&"is_alive") or bool(target.call(&"is_alive")):
+		return
+	_throwing_daggers = mini(5, _throwing_daggers + 1)
+	_smoke_bombs = mini(5, _smoke_bombs + 1)
+	stats_changed.emit()
+
+
+func _fire_form_basic(form: int, ability_slot: StringName) -> void:
+	match form:
+		Form.NIGHTBLADE:
+			var nearest: Node2D
+			var nearest_distance := INF
+			for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+				if enemy_node is Node2D:
+					var distance := global_position.distance_squared_to((enemy_node as Node2D).global_position)
+					if distance < nearest_distance and distance <= 165.0 * 165.0:
+						nearest = enemy_node as Node2D
+						nearest_distance = distance
+			if is_instance_valid(nearest):
+				var packet := DamagePacket.fin_dagger(self, 1, 0.72)
+				packet.survivor_ability_slot = ability_slot
+				DamageResolver.apply(nearest, packet, (nearest.global_position - global_position).normalized())
+		Form.ARBALEST:
+			_spawn_projectile(FinProjectile.Kind.CROSSBOW_BOLT, aim_direction.rotated(-0.08), 0.12, ability_slot)
+		Form.HUNTSMAN:
+			_spawn_projectile(FinProjectile.Kind.ARROW, aim_direction.rotated(0.08), 0.18, ability_slot)
+		Form.ARTIFICER:
+			_spawn_projectile(FinProjectile.Kind.ROD_BOLT, aim_direction, 0.0, ability_slot)
 
 
 func _spend_crossbow_round(reload_time: float) -> void:

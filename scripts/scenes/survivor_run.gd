@@ -4,6 +4,7 @@ extends Node2D
 
 const SurvivorRunHudScript := preload("res://scripts/survivors/survivor_run_hud.gd")
 const ExperienceShardScript := preload("res://scripts/survivors/survivor_experience_shard.gd")
+const ProgressionScript := preload("res://scripts/survivors/survivor_progression.gd")
 const HERO_SCRIPTS := [
 	preload("res://scripts/characters/kat/kat_player.gd"),
 	preload("res://scripts/characters/sniff/sniff_player.gd"),
@@ -22,13 +23,6 @@ const BASE_ATTACK_INTERVALS := [0.68, 0.40, 0.64, 0.52]
 const RUN_DURATION := 600.0
 const STARTING_ENEMIES := 5
 const MAX_ENEMIES := 48
-const UPGRADE_CATALOG: Array[Dictionary] = [
-	{&"id": &"force", &"title": "FORCE", &"description": "+20% damage and resolve pressure"},
-	{&"id": &"haste", &"title": "HASTE", &"description": "+14% automatic attack speed"},
-	{&"id": &"magnet", &"title": "MAGNETISM", &"description": "+70 essence pickup radius"},
-	{&"id": &"recovery", &"title": "RECOVERY", &"description": "+1.5 health regenerated each second"},
-	{&"id": &"wisdom", &"title": "WISDOM", &"description": "+20% essence from every shard"},
-]
 
 @export_range(0, 3, 1) var hero_index := 0
 @export var audio_enabled := true
@@ -36,10 +30,12 @@ const UPGRADE_CATALOG: Array[Dictionary] = [
 
 var _world: Node2D
 var _player: Node2D
+var _camera: CameraTrauma
 var _impact_director: ImpactDirector
 var _hero_hud: CanvasLayer
 var _run_hud: CanvasLayer
 var _shield_effect: PixelSheetEffect
+var _progression
 var _enemies: Array[ReliquaryPursuer] = []
 var _rng := RandomNumberGenerator.new()
 var _run_time := 0.0
@@ -55,7 +51,6 @@ var _attack_interval_multiplier := 1.0
 var _pickup_radius := 120.0
 var _recovery_per_second := 0.0
 var _experience_multiplier := 1.0
-var _upgrade_ranks: Dictionary = {}
 var _level_up_active := false
 var _run_ended := false
 
@@ -68,6 +63,8 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	hero_index = clampi(hero_index, 0, HERO_SCRIPTS.size() - 1)
 	_rng.randomize()
+	_progression = ProgressionScript.new()
+	_progression.configure(hero_index)
 	_build_world()
 	_build_presentation()
 	_build_player_and_huds()
@@ -142,6 +139,14 @@ func choose_test_upgrade(upgrade_id: StringName) -> void:
 		_on_upgrade_selected(upgrade_id)
 
 
+func get_upgrade_rank(upgrade_id: StringName) -> int:
+	return _progression.get_rank(upgrade_id) if _progression != null else 0
+
+
+func get_ability_tier() -> int:
+	return _progression.get_tier() if _progression != null else 1
+
+
 func _build_world() -> void:
 	_world = Node2D.new()
 	_world.name = "CombatWorld"
@@ -153,15 +158,15 @@ func _build_world() -> void:
 
 
 func _build_presentation() -> void:
-	var camera := CameraTrauma.new()
-	camera.name = "CameraTrauma"
-	add_child(camera)
+	_camera = CameraTrauma.new()
+	_camera.name = "CameraTrauma"
+	add_child(_camera)
 	var hit_stop := HitStop.new()
 	hit_stop.name = "HitStop"
 	add_child(hit_stop)
 	_impact_director = ImpactDirector.new()
 	_impact_director.name = "ImpactDirector"
-	_impact_director.configure(camera, hit_stop)
+	_impact_director.configure(_camera, hit_stop)
 	add_child(_impact_director)
 
 
@@ -172,9 +177,11 @@ func _build_player_and_huds() -> void:
 	_player.global_position = Vector2(640.0, 360.0)
 	_player.call(&"set_survivor_mode", true)
 	_player.call(&"set_survivor_power_multiplier", _power_multiplier)
+	_sync_ability_progression()
 	if _player.has_method(&"set_movement_bounds"):
 		_player.call(&"set_movement_bounds", ArenaBackdrop.PLAYABLE_RECT.grow(-36.0))
 	_world.add_child(_player)
+	_camera.configure_follow(_player, ArenaBackdrop.PLAYABLE_RECT)
 	_connect_player_presentation()
 
 	var hud_script: Script = HUD_SCRIPTS[hero_index]
@@ -257,16 +264,21 @@ func _spawn_enemy() -> void:
 
 func _random_edge_position() -> Vector2:
 	var bounds := ArenaBackdrop.PLAYABLE_RECT.grow(-42.0)
-	var side := _rng.randi_range(0, 3)
-	match side:
-		0:
-			return Vector2(_rng.randf_range(bounds.position.x, bounds.end.x), bounds.position.y)
-		1:
-			return Vector2(bounds.end.x, _rng.randf_range(bounds.position.y, bounds.end.y))
-		2:
-			return Vector2(_rng.randf_range(bounds.position.x, bounds.end.x), bounds.end.y)
-		_:
-			return Vector2(bounds.position.x, _rng.randf_range(bounds.position.y, bounds.end.y))
+	for _attempt: int in 12:
+		var side := _rng.randi_range(0, 3)
+		var candidate: Vector2
+		match side:
+			0:
+				candidate = Vector2(_rng.randf_range(bounds.position.x, bounds.end.x), bounds.position.y)
+			1:
+				candidate = Vector2(bounds.end.x, _rng.randf_range(bounds.position.y, bounds.end.y))
+			2:
+				candidate = Vector2(_rng.randf_range(bounds.position.x, bounds.end.x), bounds.end.y)
+			_:
+				candidate = Vector2(bounds.position.x, _rng.randf_range(bounds.position.y, bounds.end.y))
+		if ArenaBackdrop.is_position_clear(candidate, 54.0):
+			return candidate
+	return bounds.position
 
 
 func _tick_auto_attack(delta: float) -> void:
@@ -331,52 +343,61 @@ func _try_level_up() -> void:
 	_experience -= _experience_required
 	_level += 1
 	_experience_required = 4 + _level * 3
+	_progression.set_run_level(_level)
+	_sync_ability_progression()
 	_level_up_active = true
 	get_tree().paused = true
 	_run_hud.call(&"show_level_up", _roll_upgrade_options())
 
 
 func _roll_upgrade_options() -> Array[Dictionary]:
-	var pool := UPGRADE_CATALOG.duplicate(true)
-	var options: Array[Dictionary] = []
-	for _option_index: int in 3:
-		var pool_index := _rng.randi_range(0, pool.size() - 1)
-		options.append(pool.pop_at(pool_index) as Dictionary)
-	return options
+	return _progression.roll_options(_rng, 6)
 
 
 func _on_upgrade_selected(upgrade_id: StringName) -> void:
 	if not _level_up_active:
 		return
-	_upgrade_ranks[upgrade_id] = int(_upgrade_ranks.get(upgrade_id, 0)) + 1
+	var state: Dictionary = _progression.apply_pick(upgrade_id)
+	if state[&"kind"] == &"ability":
+		_sync_ability_progression()
 	match upgrade_id:
 		&"force":
-			_power_multiplier += 0.20
+			_power_multiplier += 0.12
 			_player.call(&"set_survivor_power_multiplier", _power_multiplier)
 		&"haste":
-			_attack_interval_multiplier = maxf(0.48, _attack_interval_multiplier * 0.86)
+			_attack_interval_multiplier = maxf(0.42, _attack_interval_multiplier * 0.90)
+		&"fortitude":
+			if _player.has_method(&"apply_survivor_fortitude"):
+				_player.call(&"apply_survivor_fortitude", 0.10)
 		&"magnet":
-			_pickup_radius += 70.0
+			_pickup_radius += 60.0
 			for pickup: Node in get_tree().get_nodes_in_group(&"survivor_pickups"):
 				pickup.call(&"set_pickup_radius", _pickup_radius)
 		&"recovery":
-			_recovery_per_second += 1.5
-			_player.call(&"heal", 18.0)
+			_recovery_per_second += 1.0
+			_player.call(&"heal", 12.0)
 		&"wisdom":
-			_experience_multiplier += 0.20
+			_experience_multiplier += 0.15
 	_level_up_active = false
 	_run_hud.call(&"hide_modal")
-	_run_hud.call(&"set_upgrade_summary", _format_upgrade_summary())
+	_run_hud.call(&"set_upgrade_summary", _progression.get_summary())
 	get_tree().paused = false
-	_hero_hud.call(&"announce", String(upgrade_id).to_upper())
+	_hero_hud.call(&"announce", "UNLOCKED" if state[&"kind"] == &"ability" and state[&"rank"] == 1 else String(upgrade_id).to_upper())
 	call_deferred(&"_try_level_up")
 
 
-func _format_upgrade_summary() -> String:
-	var parts: PackedStringArray = []
-	for upgrade_id: Variant in _upgrade_ranks:
-		parts.append("%s %d" % [String(upgrade_id).to_upper(), int(_upgrade_ranks[upgrade_id])])
-	return "  /  ".join(parts)
+func _sync_ability_progression() -> void:
+	if not is_instance_valid(_player) or not _player.has_method(&"set_survivor_ability_progress"):
+		return
+	for slot: StringName in ProgressionScript.ABILITY_SLOTS:
+		_player.call(
+			&"set_survivor_ability_progress",
+			slot,
+			_progression.get_rank(slot),
+			_progression.get_tier(),
+			_progression.get_ability_power_multiplier(slot),
+			_progression.get_ability_cooldown_multiplier(slot)
+		)
 
 
 func _update_huds() -> void:

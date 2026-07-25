@@ -27,5 +27,7 @@ static func _apply_survivor_power(packet: DamagePacket) -> void:
 	if not is_instance_valid(packet.source) or not packet.source.has_method(&"get_survivor_power_multiplier"):
 		return
 	var multiplier := maxf(0.1, float(packet.source.call(&"get_survivor_power_multiplier")))
+	if not packet.survivor_ability_slot.is_empty() and packet.source.has_method(&"get_survivor_ability_power_multiplier"):
+		multiplier *= maxf(0.0, float(packet.source.call(&"get_survivor_ability_power_multiplier", packet.survivor_ability_slot)))
 	packet.health_damage *= multiplier
 	packet.resolve_damage *= multiplier

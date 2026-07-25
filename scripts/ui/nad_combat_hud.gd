@@ -61,8 +61,8 @@ func _ready() -> void:
 	_focus_label = _make_label("FOCUS 0  /  LOCKED 0", Vector2(18.0, 155.0), Vector2(210.0, 22.0), 10, Color("8ce9e4"))
 	identity_panel.add_child(_focus_label)
 	identity_panel.add_child(_make_label("ANCHORS", Vector2(236.0, 155.0), Vector2(66.0, 22.0), 9, Color("b9d37a")))
-	for anchor_index: int in 3:
-		var pip := _make_panel(Vector2(306.0 + float(anchor_index) * 28.0, 158.0), Vector2(21.0, 14.0), Color("10272a"), Color("36676a"))
+	for anchor_index: int in 5:
+		var pip := _make_panel(Vector2(285.0 + float(anchor_index) * 21.0, 158.0), Vector2(16.0, 14.0), Color("10272a"), Color("36676a"))
 		identity_panel.add_child(pip)
 		_anchor_pips.append(pip)
 
@@ -110,10 +110,10 @@ func _process(delta: float) -> void:
 	_last_health = _player.health
 	_health_flash = maxf(0.0, _health_flash - delta * 3.5)
 	_health_bar.modulate = Color.WHITE.lerp(Color(1.0, 0.37, 0.22), _health_flash * 0.52)
-	_health_bar.value = (_player.health / NadPlayer.MAX_HEALTH) * 100.0
+	_health_bar.value = (_player.health / _player.get_max_health()) * 100.0
 	_resolve_bar.value = (_player.resolve / NadPlayer.MAX_RESOLVE) * 100.0
 	_mana_bar.value = (_player.mana / NadPlayer.MAX_MANA) * 100.0
-	_health_value.text = "%d" % int(ceil(_player.health))
+	_health_value.text = "%d / %d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health()))]
 	_mana_value.text = "%d" % int(floor(_player.mana))
 	_state_label.text = _player.get_state_label()
 
@@ -126,15 +126,20 @@ func _process(delta: float) -> void:
 		if bool(node.call(&"is_control_locked")):
 			locked_count += 1
 	_focus_label.text = "FOCUS %d  /  LOCKED %d" % [focus_total, locked_count]
+	var anchor_tier := _player.get_survivor_ability_tier(&"ability_1")
+	var anchor_capacity := [1, 2, 3, 4, 5][anchor_tier - 1] as int
+	if not _player.is_survivor_ability_unlocked(&"ability_1"):
+		anchor_capacity = 0
 	for anchor_index: int in _anchor_pips.size():
 		var active := anchor_index < _player.get_anchor_count()
+		var available := anchor_index < anchor_capacity
 		var style := _anchor_pips[anchor_index].get_theme_stylebox(&"panel") as StyleBoxFlat
 		style.bg_color = Color("c7e66c") if active else Color("10272a")
-		style.border_color = Color("8cfff2") if active else Color("36676a")
+		style.border_color = Color("8cfff2") if active else (Color("36676a") if available else Color("1c3335"))
 
 	_update_slot(&"primary", 0.0, 1.0, "7 MANA")
 	_update_slot(&"mantle", 0.0, 1.0, "32 MANA")
-	_update_slot(&"anchor", _player.anchor_cooldown, 8.0, "COLLAPSE" if _player.get_anchor_count() == 3 else "%d/3  18 MANA" % _player.get_anchor_count())
+	_update_slot(&"anchor", _player.anchor_cooldown, 8.0, "COLLAPSE" if _player.get_anchor_count() == anchor_capacity else "%d/%d  18 MANA" % [_player.get_anchor_count(), anchor_capacity])
 	_update_slot(&"cascade", _player.cascade_cooldown, 6.5, "24 MANA")
 	_update_slot(&"fold", _player.fold_cooldown, 2.8, "READY")
 	_update_slot(&"ultimate", _player.ultimate_cooldown, 22.0, "50 MANA")
@@ -144,6 +149,11 @@ func _process(delta: float) -> void:
 		var status := data[&"status"] as Label
 		progress.value = _player.get_mantle_charge_ratio() * 100.0
 		status.text = "%d%%" % int(round(_player.get_mantle_charge_ratio() * 100.0))
+	_apply_progression_status(&"mantle", &"signature")
+	_apply_progression_status(&"anchor", &"ability_1")
+	_apply_progression_status(&"cascade", &"ability_2")
+	_apply_progression_status(&"fold", &"evade")
+	_apply_progression_status(&"ultimate", &"ultimate")
 
 	if _using_gamepad != _player.is_using_gamepad():
 		_using_gamepad = _player.is_using_gamepad()
@@ -180,6 +190,23 @@ func _update_slot(slot_id: StringName, remaining: float, maximum: float, ready_t
 		progress.value = (1.0 - clampf(remaining / maximum, 0.0, 1.0)) * 100.0
 		status.text = "%.1f" % remaining
 		status.add_theme_color_override(&"font_color", Color("88aaa8"))
+
+
+func _apply_progression_status(display_slot: StringName, progression_slot: StringName) -> void:
+	var data: Dictionary = _slot_data[display_slot]
+	var status := data[&"status"] as Label
+	var progress := data[&"progress"] as ProgressBar
+	var glyph := data[&"glyph"] as Label
+	if not _player.is_survivor_ability_unlocked(progression_slot):
+		status.text = "LOCKED"
+		status.add_theme_color_override(&"font_color", Color("617473"))
+		progress.value = 0.0
+		glyph.modulate = Color(0.42, 0.48, 0.47, 1.0)
+		return
+	var rank := _player.get_survivor_ability_rank(progression_slot)
+	if rank > 0:
+		status.text = "T%d R%d  %s" % [_player.get_survivor_ability_tier(progression_slot), rank, status.text]
+	glyph.modulate = Color.WHITE
 
 
 func _refresh_glyphs() -> void:

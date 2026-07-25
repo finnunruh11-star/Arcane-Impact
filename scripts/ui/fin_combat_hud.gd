@@ -23,6 +23,7 @@ var _announcement_timer := 0.0
 var _health_flash := 0.0
 var _last_health := FinPlayer.MAX_HEALTH
 var _last_form := -1
+var _last_form_tier := -1
 var _using_gamepad := false
 
 
@@ -135,15 +136,15 @@ func _process(delta: float) -> void:
 	_last_health = _player.health
 	_health_flash = maxf(0.0, _health_flash - delta * 3.5)
 	_health_bar.modulate = Color.WHITE.lerp(Color(1.0, 0.38, 0.22), _health_flash * 0.52)
-	_health_bar.value = (_player.health / FinPlayer.MAX_HEALTH) * 100.0
+	_health_bar.value = (_player.health / _player.get_max_health()) * 100.0
 	_resolve_bar.value = (_player.resolve / FinPlayer.MAX_RESOLVE) * 100.0
 	_ward_bar.value = (_player.ward / FinPlayer.MAX_WARD) * 100.0
-	_health_value.text = "%d" % int(ceil(_player.health))
+	_health_value.text = "%d / %d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health()))]
 	_state_label.text = _player.get_state_label()
 	_mark_label.text = "PIERCE %d" % _player.get_total_pierce_marks()
 	_concealment_label.text = "CONCEALED" if _player.is_concealed() else "EXPOSED"
 	_concealment_label.add_theme_color_override(&"font_color", Color("9be6d2") if _player.is_concealed() else Color("768e8c"))
-	if _last_form != _player.get_form():
+	if _last_form != _player.get_form() or _last_form_tier != _player.get_survivor_ability_tier(&"ultimate"):
 		_refresh_form()
 	_update_resources()
 	_update_ability_slots()
@@ -168,6 +169,12 @@ func _update_resources() -> void:
 
 func _update_ability_slots() -> void:
 	var form := _player.get_form()
+	var utility_tier := _player.get_survivor_ability_tier(&"ability_1")
+	var tool_tier := _player.get_survivor_ability_tier(&"ability_2")
+	var trap_capacity := [1, 2, 2, 3, 4][utility_tier - 1] as int
+	var potion_capacity := [1, 2, 3, 4, 5][utility_tier - 1] as int
+	var dagger_capacity := [1, 2, 3, 4, 5][tool_tier - 1] as int
+	var smoke_capacity := [1, 2, 2, 3, 5][tool_tier - 1] as int
 	match form:
 		FinPlayer.Form.NIGHTBLADE:
 			_update_slot(&"primary", 0.0, 1.0, "3-HIT COMBO")
@@ -182,25 +189,31 @@ func _update_ability_slots() -> void:
 		FinPlayer.Form.HUNTSMAN:
 			_update_slot(&"primary", 0.0, 1.0, "RANGE BUILDS")
 			_update_slot(&"signature", 0.0, 1.0, "HOLD DRAW")
-			_update_slot(&"ability_1", _player.shadow_bind_cooldown, 0.72, "%d/2 SET" % _player.get_trap_count())
-			_update_slot(&"ability_2", 0.0 if _player.get_throwing_dagger_count() > 0 else FinPlayer.DAGGER_CHARGE_TIME, FinPlayer.DAGGER_CHARGE_TIME, "%d/3" % _player.get_throwing_dagger_count())
+			_update_slot(&"ability_1", _player.shadow_bind_cooldown, 0.72, "%d/%d SET" % [_player.get_trap_count(), trap_capacity])
+			_update_slot(&"ability_2", 0.0 if _player.get_throwing_dagger_count() > 0 else FinPlayer.DAGGER_CHARGE_TIME, FinPlayer.DAGGER_CHARGE_TIME, "%d/%d" % [_player.get_throwing_dagger_count(), dagger_capacity])
 		FinPlayer.Form.ARTIFICER:
 			_update_slot(&"primary", 0.0, 1.0, "RESOLVE TAP")
 			_update_slot(&"signature", _player.mutivarg_cooldown, 8.0, "READY")
-			_update_slot(&"ability_1", 0.0 if _player.get_potion_count() > 0 else FinPlayer.POTION_CHARGE_TIME, FinPlayer.POTION_CHARGE_TIME, "%d/3 %s" % [_player.get_potion_count(), _player.get_last_potion_label()])
-			_update_slot(&"ability_2", 0.0 if _player.get_smoke_bomb_count() > 0 else FinPlayer.SMOKE_CHARGE_TIME, FinPlayer.SMOKE_CHARGE_TIME, "%d/2" % _player.get_smoke_bomb_count())
+			_update_slot(&"ability_1", 0.0 if _player.get_potion_count() > 0 else FinPlayer.POTION_CHARGE_TIME, FinPlayer.POTION_CHARGE_TIME, "%d/%d %s" % [_player.get_potion_count(), potion_capacity, _player.get_last_potion_label()])
+			_update_slot(&"ability_2", 0.0 if _player.get_smoke_bomb_count() > 0 else FinPlayer.SMOKE_CHARGE_TIME, FinPlayer.SMOKE_CHARGE_TIME, "%d/%d" % [_player.get_smoke_bomb_count(), smoke_capacity])
 	_update_slot(&"step", _player.umbral_step_cooldown, FinPlayer.UMBRAL_STEP_COOLDOWN, "ESCAPE")
 	_update_slot(&"ultimate", 0.0, 1.0, "4 FORMS")
 	if _player.get_signature_charge_ratio() > 0.0:
 		var data: Dictionary = _slot_data[&"signature"]
 		(data[&"progress"] as ProgressBar).value = _player.get_signature_charge_ratio() * 100.0
 		(data[&"status"] as Label).text = "%d%%" % int(round(_player.get_signature_charge_ratio() * 100.0))
+	_apply_progression_status(&"signature", &"signature")
+	_apply_progression_status(&"ability_1", &"ability_1")
+	_apply_progression_status(&"ability_2", &"ability_2")
+	_apply_progression_status(&"step", &"evade")
+	_apply_progression_status(&"ultimate", &"ultimate")
 
 
 func _refresh_form() -> void:
 	if not is_instance_valid(_player):
 		return
 	_last_form = _player.get_form()
+	_last_form_tier = _player.get_survivor_ability_tier(&"ultimate")
 	var accent := _player.get_form_accent()
 	_form_label.text = _player.get_form_label()
 	_form_label.add_theme_color_override(&"font_color", accent)
@@ -209,12 +222,14 @@ func _refresh_form() -> void:
 	identity_style.border_color = accent
 	for form_index: int in _form_tabs.size():
 		var selected := form_index == _last_form
+		var maximum_form := 3 if _player.get_survivor_ability_rank(&"ultimate") == 0 else mini(3, _last_form_tier)
+		var available := _player.is_survivor_ability_unlocked(&"ultimate") and form_index <= maximum_form
 		var style := _form_tabs[form_index].get_theme_stylebox(&"panel") as StyleBoxFlat
-		style.bg_color = Color(FinPlayer.FORM_ACCENTS[form_index], 0.26 if selected else 0.035)
-		style.border_color = FinPlayer.FORM_ACCENTS[form_index] if selected else Color("355b59")
+		style.bg_color = Color(FinPlayer.FORM_ACCENTS[form_index], 0.26 if selected else (0.035 if available else 0.008))
+		style.border_color = FinPlayer.FORM_ACCENTS[form_index] if selected else (Color("355b59") if available else Color("1c302f"))
 		style.set_border_width_all(2 if selected else 1)
 		var label := _form_tabs[form_index].get_child(0) as Label
-		label.add_theme_color_override(&"font_color", Color("f3efdf") if selected else Color("718986"))
+		label.add_theme_color_override(&"font_color", Color("f3efdf") if selected else (Color("718986") if available else Color("3f504e")))
 	for slot_id: Variant in _slot_data:
 		if slot_id == &"ultimate" or slot_id == &"step":
 			continue
@@ -254,6 +269,23 @@ func _update_slot(slot_id: StringName, remaining: float, maximum: float, ready_t
 		progress.value = (1.0 - clampf(remaining / maxf(0.01, maximum), 0.0, 1.0)) * 100.0
 		status.text = "%.1f" % remaining
 		status.add_theme_color_override(&"font_color", Color("829d99"))
+
+
+func _apply_progression_status(display_slot: StringName, progression_slot: StringName) -> void:
+	var data: Dictionary = _slot_data[display_slot]
+	var status := data[&"status"] as Label
+	var progress := data[&"progress"] as ProgressBar
+	var glyph := data[&"glyph"] as Label
+	if not _player.is_survivor_ability_unlocked(progression_slot):
+		status.text = "LOCKED"
+		status.add_theme_color_override(&"font_color", Color("60716e"))
+		progress.value = 0.0
+		glyph.modulate = Color(0.42, 0.47, 0.46, 1.0)
+		return
+	var rank := _player.get_survivor_ability_rank(progression_slot)
+	if rank > 0:
+		status.text = "T%d R%d  %s" % [_player.get_survivor_ability_tier(progression_slot), rank, status.text]
+	glyph.modulate = Color.WHITE
 
 
 func _refresh_glyphs() -> void:

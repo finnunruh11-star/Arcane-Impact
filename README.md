@@ -8,8 +8,11 @@ arena-survival action roguelite. It shares no source code or assets with PVP_DIM
 The current playable build opens on a four-hero roster and sends the selected
 hero into a ten-minute run in the Shattered Reliquary. Enemies enter
 continuously from every edge, grow stronger over time, and drop Arcane Essence.
-Collect enough Essence to pause the horde and choose one of three stacking
-boons. Survive the full ritual to win.
+Each hero starts with only their automatic basic attack. Collect enough Essence
+to pause the horde and choose one of six random upgrades: three stats and three
+hero abilities. The first ability pick unlocks rank 1; repeat picks improve its
+power and cooldown. Ability behavior advances at run levels 5, 10, 15, and 20.
+Survive the full ritual to win.
 
 Kat, the Vampiric Bulwark, features:
 
@@ -47,8 +50,10 @@ Fin, the Shadow Artificer, features:
 All four slices include:
 
 - automatic nearest-target primary attacks and player-controlled active skills;
+- a scrolling 2560-by-1560 arena with solid reliquary ruins and camera follow;
 - three continuously spawning enemy profiles with readable collision-matched telegraphs;
-- Arcane Essence pickups, levels, three-choice boons, a run timer, and kill count;
+- Arcane Essence pickups, six-choice levels, ranked abilities, five behavior tiers,
+  six stacking stats, a run timer, and kill count;
 - sprite-sheet VFX, layered synthesized SFX, hit-stop, camera trauma, flash,
   floating damage, and Xbox rumble;
 - controller-aware HUD glyphs and a retry/roster run summary.
@@ -67,12 +72,25 @@ All four slices include:
 | Action | Keyboard and mouse | Xbox controller |
 | --- | --- | --- |
 | Move | WASD | Left stick |
-| Choose level boon | 1/2/3 or mouse | D-pad / left stick and A |
+| Choose level boon | 1/2/3/4/5/6 or mouse | D-pad / left stick and A |
 | Return to roster | Escape | Menu |
 | Collision debug | Tab | D-pad up |
 
-Primary attacks automatically aim at the closest living enemy. The existing
-hero ability inputs remain available for active decisions during the run.
+Primary attacks automatically aim at the closest living enemy. Active inputs
+become available after that ability is selected from a level-up offer. Combat
+HUD slots show `LOCKED`, then the current tier and rank after unlocking.
+
+### Run progression
+
+- **Ability tiers:** tier 1 at level 1, tier 2 at level 5, tier 3 at level 10,
+    tier 4 at level 15, and tier 5 at level 20.
+- **Ability ranks:** the first pick unlocks rank 1. Every repeat pick adds 12%
+    ability power and improves its cooldown independently of tier milestones.
+- **Stats:** Force adds 12% damage and Resolve pressure; Haste improves automatic
+    basic attack speed by 10%; Fortitude adds 10% maximum health; Magnetism adds
+    60 pickup range; Recovery adds 1 health per second; Wisdom adds 15% Essence.
+- **Tier 3:** preserves the original full hero kits. Tiers 1-2 are deliberately
+    weaker versions; tiers 4-5 add new mechanics and stronger identity payoffs.
 
 ### Kat
 
@@ -153,6 +171,7 @@ godot --headless --path . --script res://tests/soak_nad_slice.gd
 godot --headless --path . --script res://tests/soak_fin_slice.gd
 godot --headless --path . --script res://tests/test_roster_navigation.gd
 godot --headless --path . --script res://tests/test_survivor_run.gd
+godot --path . --script res://tests/capture_survivor_progression.gd
 ```
 
 This prototype is not currently licensed for redistribution.

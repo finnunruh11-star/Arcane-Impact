@@ -24,9 +24,14 @@ button, Xbox A, or Xbox X.
 
 ## Goal and encounter flow
 
-Deploying a hero begins a ten-minute run in the Shattered Reliquary. Primary
-attacks automatically target the nearest living enemy while movement and the
-hero's active abilities remain under direct control. Enemies enter continuously
+Deploying a hero begins a ten-minute run in the Shattered Reliquary. The arena
+is a scrolling 2560-by-1560 battlefield with solid ruined structures. The camera
+follows the hero and clamps at the world edges. Enemies and heroes collide with
+the ruins; enemy pursuit steers around blocked approaches.
+
+Every hero starts with only their automatic basic attack. It targets the nearest
+living enemy while movement remains under direct control. Active skills become
+usable after they are selected during a level-up. Enemies enter continuously
 from all four arena edges; the active population, health, damage, and speed rise
 throughout the ritual. Enemy profiles rotate between:
 
@@ -37,15 +42,37 @@ throughout the ritual. Enemy profiles rotate between:
 Red ground shapes show the exact area of an incoming enemy strike. Enemy health
 is the red bar above the enemy; cyan is Resolve. Defeated enemies drop green
 Arcane Essence shards. Move near a shard to draw it in. Filling the Essence bar
-pauses combat and presents three boons:
+pauses combat and presents six unique choices: three random stats and three
+random abilities from the selected hero. Keyboard choices use 1 through 6.
 
-- **Force:** increases health and Resolve damage by 20%.
-- **Haste:** increases automatic primary attack speed by 14%.
-- **Magnetism:** increases Essence attraction range by 70 pixels.
-- **Recovery:** restores 1.5 health per second and heals 18 immediately.
-- **Wisdom:** increases Essence gained from every shard by 20%.
+The first pick of an ability unlocks rank 1. Picking it again raises its rank,
+adding 12% power per repeat and improving its cooldown. Ability behavior uses
+the run's current milestone tier:
 
-Boons stack for the duration of the run. Survive until 10:00 to complete the
+| Run level | Ability tier | Role |
+| --- | --- | --- |
+| 1-4 | Tier 1 | Small or limited opening version |
+| 5-9 | Tier 2 | Improved reach, duration, or utility |
+| 10-14 | Tier 3 | Original full-strength hero kit |
+| 15-19 | Tier 4 | New chaining, control, sustain, or form mechanics |
+| 20+ | Tier 5 | Identity-defining capstone behavior |
+
+The six repeatable stats are:
+
+- **Force:** increases health and Resolve damage by 12%.
+- **Haste:** increases automatic primary attack speed by 10%.
+- **Fortitude:** increases maximum health by 10% and restores the increase.
+- **Magnetism:** increases Essence attraction range by 60 pixels.
+- **Recovery:** restores 1 health per second and heals 12 immediately.
+- **Wisdom:** increases Essence gained from every shard by 15%.
+
+Upgrades stack for the duration of the run. Combat HUD slots show `LOCKED`
+before the first pick and `Tn Rm` afterward. The detailed ability values below
+describe tier 3, which intentionally preserves the original full hero kits.
+Lower tiers are constrained versions; tiers 4 and 5 apply the behavior written
+on their level-up cards.
+
+Survive until 10:00 to complete the
 ritual. Defeat opens a summary with retry and roster actions. Escape or the
 controller Menu button returns to the roster at any time.
 

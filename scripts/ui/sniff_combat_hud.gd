@@ -100,9 +100,9 @@ func _process(delta: float) -> void:
 	_last_health = _player.health
 	_health_flash = maxf(0.0, _health_flash - delta * 3.5)
 	_health_bar.modulate = Color.WHITE.lerp(Color(1.0, 0.36, 0.22), _health_flash * 0.52)
-	_health_bar.value = (_player.health / SniffPlayer.MAX_HEALTH) * 100.0
+	_health_bar.value = (_player.health / _player.get_max_health()) * 100.0
 	_resolve_bar.value = (_player.resolve / SniffPlayer.MAX_RESOLVE) * 100.0
-	_health_value.text = "%d" % int(ceil(_player.health))
+	_health_value.text = "%d / %d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health()))]
 	_state_label.text = _player.get_state_label()
 	for stack_index: int in _blessing_pips.size():
 		var active := stack_index < _player.blessing
@@ -122,6 +122,11 @@ func _process(delta: float) -> void:
 		var status := data[&"status"] as Label
 		progress.value = _player.get_dash_charge_ratio() * 100.0
 		status.text = "%d%%" % int(round(_player.get_dash_charge_ratio() * 100.0))
+	_apply_progression_status(&"dash", &"signature")
+	_apply_progression_status(&"blessing", &"ability_1")
+	_apply_progression_status(&"surge", &"ability_2")
+	_apply_progression_status(&"step", &"evade")
+	_apply_progression_status(&"ultimate", &"ultimate")
 
 	if _using_gamepad != _player.is_using_gamepad():
 		_using_gamepad = _player.is_using_gamepad()
@@ -158,6 +163,23 @@ func _update_slot(slot_id: StringName, remaining: float, maximum: float, ready_t
 		progress.value = (1.0 - clampf(remaining / maximum, 0.0, 1.0)) * 100.0
 		status.text = "%.1f" % remaining
 		status.add_theme_color_override(&"font_color", Color("88a5aa"))
+
+
+func _apply_progression_status(display_slot: StringName, progression_slot: StringName) -> void:
+	var data: Dictionary = _slot_data[display_slot]
+	var status := data[&"status"] as Label
+	var progress := data[&"progress"] as ProgressBar
+	var glyph := data[&"glyph"] as Label
+	if not _player.is_survivor_ability_unlocked(progression_slot):
+		status.text = "LOCKED"
+		status.add_theme_color_override(&"font_color", Color("61777a"))
+		progress.value = 0.0
+		glyph.modulate = Color(0.42, 0.48, 0.49, 1.0)
+		return
+	var rank := _player.get_survivor_ability_rank(progression_slot)
+	if rank > 0:
+		status.text = "T%d R%d  %s" % [_player.get_survivor_ability_tier(progression_slot), rank, status.text]
+	glyph.modulate = Color.WHITE
 
 
 func _refresh_glyphs() -> void:

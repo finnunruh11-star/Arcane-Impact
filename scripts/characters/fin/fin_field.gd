@@ -11,15 +11,17 @@ var _owner: Node2D
 var _kind := Kind.MUTIVARG
 var _radius := 150.0
 var _power := 0.5
+var _ability_slot := StringName()
 var _remaining := 3.0
 var _pulse_timer := 0.10
 var _visual_time := 0.0
 var _entered_ids: Dictionary = {}
 
 
-func configure(owner: Node2D, kind: Kind, radius: float, power := 0.5) -> void:
+func configure(owner: Node2D, kind: Kind, radius: float, power := 0.5, ability_slot := StringName()) -> void:
 	_owner = owner
 	_kind = kind
+	_ability_slot = ability_slot
 	_radius = maxf(32.0, radius)
 	_power = clampf(power, 0.0, 1.0)
 	_remaining = lerpf(2.6, 3.8, _power) if _kind == Kind.MUTIVARG else 4.4
@@ -84,6 +86,7 @@ func _apply_pulse(targets: Array[Node2D]) -> void:
 	for target: Node2D in targets:
 		var direction := (target.global_position - global_position).normalized()
 		var packet := DamagePacket.fin_mutivarg(_owner, _power) if _kind == Kind.MUTIVARG else DamagePacket.fin_alchemical(_owner)
+		packet.survivor_ability_slot = _ability_slot
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt > 0.0 and is_instance_valid(_owner) and _owner.has_method(&"on_fin_field_hit"):
 			_owner.call(&"on_fin_field_hit", target, global_position, direction, packet, _power, _kind)

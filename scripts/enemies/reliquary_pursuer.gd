@@ -51,6 +51,8 @@ var _pierce_marks := 0
 var _pierce_mark_remaining := 0.0
 var _death_timer := 0.0
 var _telegraph_time := 0.0
+var _avoidance_direction := Vector2.ZERO
+var _avoidance_time := 0.0
 
 
 func configure(player: Node2D, variant: int) -> void:
@@ -154,9 +156,11 @@ func _physics_process(delta: float) -> void:
 	var to_player := _player.global_position - global_position
 	if not to_player.is_zero_approx():
 		_facing = to_player.normalized()
+	_avoidance_time = maxf(0.0, _avoidance_time - delta)
 	match _state:
 		State.CHASE:
-			velocity = _facing * move_speed * _slow_scale * (0.34 if player_concealed else 1.0) + _knockback_velocity
+			var chase_direction := (_facing * 0.38 + _avoidance_direction).normalized() if _avoidance_time > 0.0 else _facing
+			velocity = chase_direction * move_speed * _slow_scale * (0.34 if player_concealed else 1.0) + _knockback_velocity
 			if not player_concealed and to_player.length() <= ATTACK_REACH * 0.88:
 				_begin_windup()
 		State.WINDUP:
@@ -186,6 +190,14 @@ func _physics_process(delta: float) -> void:
 			pass
 
 	move_and_slide()
+	if _state == State.CHASE and get_slide_collision_count() > 0:
+		var collision := get_slide_collision(0)
+		if collision.get_collider() is StaticBody2D:
+			var tangent := collision.get_normal().orthogonal()
+			if tangent.dot(to_player) < 0.0:
+				tangent = -tangent
+			_avoidance_direction = tangent * 0.92
+			_avoidance_time = 0.52
 	_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, delta * 1250.0)
 	_clamp_to_arena()
 	queue_redraw()

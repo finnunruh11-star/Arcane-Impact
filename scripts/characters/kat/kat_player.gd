@@ -2,6 +2,8 @@ class_name KatPlayer
 extends CharacterBody2D
 
 
+const SurvivorAbilityStateScript := preload("res://scripts/survivors/survivor_ability_state.gd")
+
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
 signal audio_requested(cue: StringName, power: float)
@@ -64,6 +66,7 @@ var _guard_elapsed := 0.0
 var _absorbed_force := 0.0
 var _slam_power := 0.0
 var _march_direction := Vector2.RIGHT
+var _march_speed := 650.0
 var _knockback_velocity := Vector2.ZERO
 var _attack_area: Area2D
 var _attack_shape: CollisionShape2D
@@ -73,6 +76,11 @@ var _halo: MourningHalo
 var _survivor_mode := false
 var _survivor_target: Node2D
 var _survivor_power_multiplier := 1.0
+var _survivor_max_health_multiplier := 1.0
+var _survivor_abilities = SurvivorAbilityStateScript.new()
+var _communion_regen_time := 0.0
+var _last_stand_unlocked := false
+var _last_stand_available := false
 
 
 func _ready() -> void:
@@ -132,6 +140,48 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
+	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
+	if slot == &"ultimate" and rank > 0 and tier >= 5 and not _last_stand_unlocked:
+		_last_stand_unlocked = true
+		_last_stand_available = true
+
+
+func is_survivor_ability_unlocked(slot: StringName) -> bool:
+	return not _survivor_mode or _survivor_abilities.is_unlocked(slot)
+
+
+func get_survivor_ability_rank(slot: StringName) -> int:
+	return _survivor_abilities.get_rank(slot)
+
+
+func get_survivor_ability_tier(slot: StringName) -> int:
+	return _survivor_abilities.get_tier(slot) if _survivor_mode else 3
+
+
+func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
+
+
+func get_max_health() -> float:
+	return MAX_HEALTH * _survivor_max_health_multiplier
+
+
+func apply_survivor_fortitude(amount: float) -> void:
+	var previous_max := get_max_health()
+	_survivor_max_health_multiplier += maxf(0.0, amount)
+	health += get_max_health() - previous_max
+	stats_changed.emit()
+
+
+func _survivor_cooldown_delta(delta: float, slot: StringName) -> float:
+	if not _survivor_mode:
+		return delta
+	if not _survivor_abilities.is_unlocked(slot):
+		return 0.0
+	return delta / _survivor_abilities.get_cooldown(slot)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_set_using_gamepad(false)
@@ -155,10 +205,13 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_cooldowns(delta: float) -> void:
-	leech_cooldown = maxf(0.0, leech_cooldown - delta)
-	halo_cooldown = maxf(0.0, halo_cooldown - delta)
-	march_cooldown = maxf(0.0, march_cooldown - delta)
+	leech_cooldown = maxf(0.0, leech_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
+	halo_cooldown = maxf(0.0, halo_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
+	march_cooldown = maxf(0.0, march_cooldown - _survivor_cooldown_delta(delta, &"evade"))
 	resolve = minf(MAX_RESOLVE, resolve + delta * 5.0)
+	if _communion_regen_time > 0.0:
+		_communion_regen_time = maxf(0.0, _communion_regen_time - delta)
+		heal(delta * 3.2)
 	_motes = _motes.filter(func(mote: LeechMote) -> bool: return is_instance_valid(mote))
 
 
@@ -216,7 +269,8 @@ func _update_state(delta: float) -> void:
 				_set_state(State.FREE)
 		State.GUARD:
 			_guard_elapsed += delta
-			if not Input.is_action_pressed(&"signature"):
+			var guard_cap := [0.55, 0.88, INF, INF, INF][get_survivor_ability_tier(&"signature") - 1] as float
+			if not Input.is_action_pressed(&"signature") or _guard_elapsed >= guard_cap:
 				_begin_slam()
 		State.SLAM_STARTUP:
 			_state_time -= delta
@@ -239,6 +293,8 @@ func _update_state(delta: float) -> void:
 			if _state_time <= 0.0:
 				_attack_area.monitoring = false
 				shield_visual_changed.emit(false)
+				if get_survivor_ability_tier(&"evade") >= 4:
+					_resolve_march_arrival()
 				_set_state(State.FREE)
 		State.ULTIMATE_STARTUP:
 			_state_time -= delta
@@ -249,15 +305,15 @@ func _update_state(delta: float) -> void:
 
 
 func _handle_free_inputs() -> void:
-	if Input.is_action_just_pressed(&"ultimate") and vitality >= MAX_VITALITY:
+	if Input.is_action_just_pressed(&"ultimate") and is_survivor_ability_unlocked(&"ultimate") and vitality >= MAX_VITALITY:
 		_begin_black_communion()
-	elif Input.is_action_just_pressed(&"ability_1") and leech_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"ability_1") and is_survivor_ability_unlocked(&"ability_1") and leech_cooldown <= 0.0:
 		_cast_leech_choir()
-	elif Input.is_action_just_pressed(&"ability_2") and halo_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"ability_2") and is_survivor_ability_unlocked(&"ability_2") and halo_cooldown <= 0.0:
 		_cast_mourning_halo()
-	elif Input.is_action_just_pressed(&"evade") and march_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"evade") and is_survivor_ability_unlocked(&"evade") and march_cooldown <= 0.0:
 		_begin_bastion_march()
-	elif Input.is_action_just_pressed(&"signature"):
+	elif Input.is_action_just_pressed(&"signature") and is_survivor_ability_unlocked(&"signature"):
 		_begin_guard()
 	elif Input.is_action_just_pressed(&"primary") or _primary_buffer > 0.0:
 		_primary_buffer = 0.0
@@ -302,7 +358,7 @@ func _update_movement() -> void:
 		State.STAGGER, State.DEAD:
 			speed_scale = 0.0
 		State.MARCH:
-			velocity = _march_direction * 650.0
+			velocity = _march_direction * _march_speed
 			return
 	velocity = move_input * MOVE_SPEED * speed_scale + _knockback_velocity
 	_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, 38.0)
@@ -353,25 +409,31 @@ func _begin_slam() -> void:
 func _begin_slam_active() -> void:
 	_state_time = 0.12
 	_hit_target_ids.clear()
-	_set_attack_box(lerpf(165.0, 255.0, _slam_power), lerpf(72.0, 108.0, _slam_power), aim_direction)
+	var tier_scale := [0.68, 0.84, 1.0, 1.22, 1.46][get_survivor_ability_tier(&"signature") - 1] as float
+	_set_attack_box(lerpf(165.0, 255.0, _slam_power) * tier_scale, lerpf(72.0, 108.0, _slam_power) * tier_scale, aim_direction)
 	_attack_area.monitoring = true
 	effect_requested.emit(&"kat_absorb", global_position + aim_direction * 45.0, aim_direction, lerpf(1.0, 1.7, _slam_power))
 	_set_state(State.SLAM_ACTIVE)
 
 
 func _apply_slam_hits() -> void:
-	_apply_attack_hits(DamagePacket.kat_slam(_slam_power, self), 2, 0.24)
+	var tier := get_survivor_ability_tier(&"signature")
+	_apply_attack_hits(DamagePacket.kat_slam(_slam_power, self), 1 if tier == 1 else (2 if tier < 4 else tier - 1), 0.24)
 
 
 func _begin_bastion_march() -> void:
 	var move_input := Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
 	_march_direction = move_input.normalized() if not move_input.is_zero_approx() else aim_direction
 	aim_direction = _march_direction
+	var tier := get_survivor_ability_tier(&"evade")
+	var durations := [0.14, 0.19, 0.24, 0.30, 0.36]
+	var speeds := [520.0, 590.0, 650.0, 720.0, 800.0]
 	march_cooldown = 3.6
-	_state_time = 0.24
+	_state_time = durations[tier - 1] as float
+	_march_speed = speeds[tier - 1] as float
 	_hit_target_ids.clear()
-	_set_attack_box(112.0, 56.0, _march_direction)
-	_attack_area.monitoring = true
+	_set_attack_box(112.0 * lerpf(0.72, 1.28, float(tier - 1) / 4.0), 56.0, _march_direction)
+	_attack_area.monitoring = tier >= 2
 	shield_visual_changed.emit(true)
 	audio_requested.emit(&"kat_march", 0.65)
 	_set_state(State.MARCH)
@@ -382,9 +444,31 @@ func _apply_march_hits() -> void:
 	_apply_attack_hits(DamagePacket.kat_march(self), 1, 0.10)
 
 
+func _resolve_march_arrival() -> void:
+	var tier := get_survivor_ability_tier(&"evade")
+	var radius := 135.0 if tier == 4 else 185.0
+	var packet := DamagePacket.kat_march(self)
+	packet.health_damage *= 0.65 if tier == 4 else 1.0
+	packet.resolve_damage *= 0.82 if tier == 4 else 1.25
+	for target_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not target_node is Node2D or not target_node.has_method(&"is_alive") or not bool(target_node.call(&"is_alive")):
+			continue
+		var target := target_node as Node2D
+		if global_position.distance_to(target.global_position) > radius:
+			continue
+		var direction := (target.global_position - global_position).normalized()
+		DamageResolver.apply(target, packet, direction)
+		if tier >= 5 and target.has_method(&"pull_toward"):
+			target.call(&"pull_toward", global_position, 260.0)
+	ward = minf(MAX_WARD, ward + (10.0 if tier == 4 else 22.0))
+	effect_requested.emit(&"kat_absorb", global_position, _march_direction, 1.35 if tier == 4 else 1.85)
+
+
 func _cast_leech_choir() -> void:
 	_motes = _motes.filter(func(mote: LeechMote) -> bool: return is_instance_valid(mote))
-	var spawn_count := mini(2, 3 - _motes.size())
+	var tier := get_survivor_ability_tier(&"ability_1")
+	var maximum_motes := tier
+	var spawn_count := mini(3 if tier >= 5 else 2, maximum_motes - _motes.size())
 	for spawn_index: int in spawn_count:
 		var mote := LeechMote.new()
 		mote.configure(self, _motes.size())
@@ -403,7 +487,7 @@ func _cast_mourning_halo() -> void:
 	if is_instance_valid(_halo):
 		_halo.queue_free()
 	_halo = MourningHalo.new()
-	_halo.configure(self)
+	_halo.configure(self, get_survivor_ability_tier(&"ability_2"))
 	add_child(_halo)
 	halo_cooldown = 11.5
 	effect_requested.emit(&"kat_curse", global_position, aim_direction, 2.4)
@@ -424,12 +508,14 @@ func _begin_black_communion() -> void:
 func _resolve_black_communion() -> void:
 	var total_damage := 0.0
 	var affected := 0
+	var tier := get_survivor_ability_tier(&"ultimate")
+	var rite_radius := [230.0, 310.0, 390.0, 520.0, 720.0][tier - 1] as float
 	for target_node: Node in get_tree().get_nodes_in_group(&"enemies"):
 		if not target_node is Node2D or not target_node.has_method(&"is_alive") or not bool(target_node.call(&"is_alive")):
 			continue
 		var target := target_node as Node2D
 		var cursed := target.has_method(&"is_cursed") and bool(target.call(&"is_cursed"))
-		if not cursed and global_position.distance_to(target.global_position) > 390.0:
+		if global_position.distance_to(target.global_position) > rite_radius and (tier < 3 or not cursed):
 			continue
 		var stacks := int(target.call(&"get_curse_stacks")) if target.has_method(&"get_curse_stacks") else 0
 		if target.has_method(&"pull_toward"):
@@ -437,12 +523,19 @@ func _resolve_black_communion() -> void:
 		var direction := (target.global_position - global_position).normalized()
 		var packet := DamagePacket.kat_communion(self, stacks)
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
+		if tier >= 5:
+			var echo := DamagePacket.kat_communion(self, stacks)
+			echo.health_damage *= 0.48
+			echo.resolve_damage *= 0.62
+			dealt += DamageResolver.apply_with_result(target, echo, direction)
 		total_damage += dealt
 		affected += 1
 		combat_impact.emit(target.global_position, direction, packet, 1.0)
 		effect_requested.emit(&"kat_curse", target.global_position, direction, 1.7)
 	heal(total_damage * 0.22)
 	ward = minf(MAX_WARD, ward + 16.0 * float(affected))
+	if tier >= 4:
+		_communion_regen_time = 6.0 if tier == 4 else 9.0
 	vitality = 0.0
 	effect_requested.emit(&"kat_communion", global_position, aim_direction, 2.45)
 	audio_requested.emit(&"kat_ultimate", 1.0)
@@ -462,6 +555,12 @@ func _apply_attack_hits(packet: DamagePacket, curse_stacks: int, drain_ratio: fl
 		_hit_target_ids[target_id] = true
 		var direction := (target.global_position - global_position).normalized()
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
+		if packet.survivor_ability_slot == &"signature" and get_survivor_ability_tier(&"signature") >= 5:
+			var echo := DamagePacket.kat_slam(_slam_power * 0.75, self)
+			echo.health_damage *= 0.52
+			echo.resolve_damage *= 0.68
+			dealt += DamageResolver.apply_with_result(target, echo, direction)
+			ward = minf(MAX_WARD, ward + 7.0)
 		if curse_stacks > 0 and target.has_method(&"apply_curse"):
 			target.call(&"apply_curse", curse_stacks, 6.0)
 		if dealt > 0.0:
@@ -494,6 +593,14 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 		ward -= ward_absorb
 		remaining_damage -= ward_absorb
 	_apply_health_damage(remaining_damage)
+	if health <= 0.0 and _last_stand_available:
+		_last_stand_available = false
+		health = get_max_health() * 0.35
+		ward = MAX_WARD
+		resolve = MAX_RESOLVE
+		vitality = 0.0
+		effect_requested.emit(&"kat_communion", global_position, aim_direction, 2.6)
+		announcement_requested.emit("EVERLASTING OATH")
 	resolve = maxf(0.0, resolve - packet.resolve_damage)
 	_knockback_velocity += incoming_direction.normalized() * packet.knockback_force
 	audio_requested.emit(&"kat_hurt", clampf(packet.health_damage / 40.0, 0.2, 1.0))
@@ -518,7 +625,7 @@ func _apply_health_damage(amount: float) -> void:
 func heal(amount: float) -> void:
 	if amount <= 0.0 or _state == State.DEAD:
 		return
-	var missing := MAX_HEALTH - health
+	var missing := get_max_health() - health
 	var restored := minf(missing, amount)
 	health += restored
 	var excess := amount - restored
@@ -537,6 +644,8 @@ func on_leech_hit(target: Node2D, dealt: float, direction: Vector2) -> void:
 		return
 	heal(dealt * 0.58)
 	gain_vitality(6.0)
+	if get_survivor_ability_tier(&"ability_1") >= 5:
+		ward = minf(MAX_WARD, ward + dealt * 0.34)
 	effect_requested.emit(&"kat_heal", global_position, direction, 0.72)
 	effect_requested.emit(&"kat_curse", target.global_position, direction, 0.75)
 	audio_requested.emit(&"kat_drain", 0.35)
@@ -548,6 +657,9 @@ func on_halo_target_hit(target: Node, dealt: float, pulse_index: int) -> void:
 
 
 func on_halo_pulse(total_damage: float, hit_count: int) -> void:
+	var tier := get_survivor_ability_tier(&"ability_2")
+	if tier >= 4 and hit_count > 0:
+		ward = minf(MAX_WARD, ward + float(hit_count) * (1.4 if tier == 4 else 2.4))
 	if hit_count <= 0:
 		return
 	heal(total_damage * 0.38)

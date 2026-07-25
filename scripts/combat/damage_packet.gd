@@ -10,6 +10,7 @@ var hit_stop_seconds: float = 0.0
 var camera_trauma: float = 0.0
 var rumble_strength: float = 0.0
 var tags: Array[StringName] = []
+var survivor_ability_slot := StringName()
 var survivor_power_applied := false
 
 
@@ -41,6 +42,7 @@ static func kat_slam(power: float, owner: Node) -> DamagePacket:
 	packet.camera_trauma = lerpf(0.34, 0.72, shaped)
 	packet.rumble_strength = lerpf(0.46, 0.92, shaped)
 	packet.tags.assign([&"heavy", &"signature", &"control", &"curse"])
+	packet.survivor_ability_slot = &"signature"
 	return packet
 
 
@@ -54,6 +56,7 @@ static func kat_march(owner: Node) -> DamagePacket:
 	packet.camera_trauma = 0.24
 	packet.rumble_strength = 0.32
 	packet.tags.assign([&"melee", &"defense", &"curse"])
+	packet.survivor_ability_slot = &"evade"
 	return packet
 
 
@@ -67,6 +70,7 @@ static func kat_mote(owner: Node) -> DamagePacket:
 	packet.camera_trauma = 0.05
 	packet.rumble_strength = 0.06
 	packet.tags.assign([&"summon", &"drain"])
+	packet.survivor_ability_slot = &"ability_1"
 	return packet
 
 
@@ -80,6 +84,7 @@ static func kat_halo(owner: Node) -> DamagePacket:
 	packet.camera_trauma = 0.025
 	packet.rumble_strength = 0.03
 	packet.tags.assign([&"aura", &"drain", &"curse"])
+	packet.survivor_ability_slot = &"ability_2"
 	return packet
 
 
@@ -93,6 +98,7 @@ static func kat_communion(owner: Node, curse_stacks: int) -> DamagePacket:
 	packet.camera_trauma = 0.94
 	packet.rumble_strength = 1.0
 	packet.tags.assign([&"ultimate", &"drain", &"curse", &"heavy"])
+	packet.survivor_ability_slot = &"ultimate"
 	return packet
 
 
@@ -127,6 +133,7 @@ static func sniff_dash(owner: Node, charge: float, stacks_spent: int) -> DamageP
 	packet.camera_trauma = lerpf(0.19, 0.42, shaped)
 	packet.rumble_strength = lerpf(0.24, 0.58, shaped)
 	packet.tags.assign([&"movement", &"lightning", &"signature", &"control"])
+	packet.survivor_ability_slot = &"signature"
 	return packet
 
 
@@ -140,6 +147,7 @@ static func sniff_flashstep(owner: Node, blessing_count: int) -> DamagePacket:
 	packet.camera_trauma = 0.07
 	packet.rumble_strength = 0.09
 	packet.tags.assign([&"movement", &"lightning", &"evade"])
+	packet.survivor_ability_slot = &"evade"
 	return packet
 
 
@@ -154,6 +162,7 @@ static func sniff_surge(owner: Node, stacks_spent: int) -> DamagePacket:
 	packet.camera_trauma = lerpf(0.31, 0.74, float(stacks) / 10.0)
 	packet.rumble_strength = lerpf(0.40, 0.90, float(stacks) / 10.0)
 	packet.tags.assign([&"area", &"lightning", &"health_cost", &"heavy"])
+	packet.survivor_ability_slot = &"ability_2"
 	return packet
 
 
@@ -168,6 +177,7 @@ static func sniff_annihilation(owner: Node, blessing_count: int) -> DamagePacket
 	packet.camera_trauma = 1.0
 	packet.rumble_strength = 1.0
 	packet.tags.assign([&"ultimate", &"lightning", &"health_cost", &"heavy"])
+	packet.survivor_ability_slot = &"ultimate"
 	return packet
 
 
@@ -196,6 +206,7 @@ static func nad_mantle(owner: Node, charge: float) -> DamagePacket:
 	packet.camera_trauma = lerpf(0.20, 0.48, shaped)
 	packet.rumble_strength = lerpf(0.28, 0.68, shaped)
 	packet.tags.assign([&"mental", &"signature", &"control", &"area"])
+	packet.survivor_ability_slot = &"signature"
 	return packet
 
 
@@ -209,6 +220,7 @@ static func nad_anchor(owner: Node) -> DamagePacket:
 	packet.camera_trauma = 0.27
 	packet.rumble_strength = 0.36
 	packet.tags.assign([&"mental", &"anchor", &"control", &"area"])
+	packet.survivor_ability_slot = &"ability_1"
 	return packet
 
 
@@ -223,6 +235,7 @@ static func nad_cascade(owner: Node, focus_stacks: int) -> DamagePacket:
 	packet.camera_trauma = 0.24
 	packet.rumble_strength = 0.31
 	packet.tags.assign([&"mental", &"cascade", &"control", &"area"])
+	packet.survivor_ability_slot = &"ability_2"
 	return packet
 
 
@@ -237,6 +250,7 @@ static func nad_conduit(owner: Node, focus_stacks: int, was_locked: bool) -> Dam
 	packet.camera_trauma = 0.88 if was_locked else 0.48
 	packet.rumble_strength = 1.0 if was_locked else 0.58
 	packet.tags.assign([&"mental", &"ultimate", &"control", &"area"])
+	packet.survivor_ability_slot = &"ultimate"
 	return packet
 
 
@@ -266,6 +280,7 @@ static func fin_mind_pierce(owner: Node, charge: float, marks: int, backstab: bo
 	packet.camera_trauma = lerpf(0.22, 0.58, shaped)
 	packet.rumble_strength = lerpf(0.30, 0.78, shaped)
 	packet.tags.assign([&"fin", &"pierce", &"signature", &"exploit"])
+	packet.survivor_ability_slot = &"signature"
 	return packet
 
 
@@ -294,6 +309,7 @@ static func fin_throwing_dagger(owner: Node) -> DamagePacket:
 	packet.camera_trauma = 0.07
 	packet.rumble_strength = 0.08
 	packet.tags.assign([&"fin", &"pierce", &"projectile", &"utility"])
+	packet.survivor_ability_slot = &"ability_2"
 	return packet
 
 
@@ -335,6 +351,7 @@ static func fin_mutivarg(owner: Node, power: float) -> DamagePacket:
 	packet.camera_trauma = 0.06
 	packet.rumble_strength = 0.08
 	packet.tags.assign([&"fin", &"object", &"mutivarg", &"control", &"area"])
+	packet.survivor_ability_slot = &"signature"
 	return packet
 
 

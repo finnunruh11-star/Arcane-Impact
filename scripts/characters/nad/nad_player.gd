@@ -2,6 +2,8 @@ class_name NadPlayer
 extends CharacterBody2D
 
 
+const SurvivorAbilityStateScript := preload("res://scripts/survivors/survivor_ability_state.gd")
+
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
 signal audio_requested(cue: StringName, power: float)
@@ -68,6 +70,7 @@ var _mantle_radius := MANTLE_MIN_RADIUS
 var _mantle_center_local := Vector2.RIGHT * 190.0
 var _fold_direction := Vector2.RIGHT
 var _fold_speed := 0.0
+var _conduit_radius := CONDUIT_RADIUS
 var _invulnerable_time := 0.0
 var _knockback_velocity := Vector2.ZERO
 var _attack_area: Area2D
@@ -78,6 +81,9 @@ var _visual_time := 0.0
 var _survivor_mode := false
 var _survivor_target: Node2D
 var _survivor_power_multiplier := 1.0
+var _survivor_max_health_multiplier := 1.0
+var _survivor_abilities = SurvivorAbilityStateScript.new()
+var _fold_reset_defeats: Dictionary = {}
 
 
 func _ready() -> void:
@@ -136,6 +142,45 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
+	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
+
+
+func is_survivor_ability_unlocked(slot: StringName) -> bool:
+	return not _survivor_mode or _survivor_abilities.is_unlocked(slot)
+
+
+func get_survivor_ability_rank(slot: StringName) -> int:
+	return _survivor_abilities.get_rank(slot)
+
+
+func get_survivor_ability_tier(slot: StringName) -> int:
+	return _survivor_abilities.get_tier(slot) if _survivor_mode else 3
+
+
+func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
+
+
+func get_max_health() -> float:
+	return MAX_HEALTH * _survivor_max_health_multiplier
+
+
+func apply_survivor_fortitude(amount: float) -> void:
+	var previous_max := get_max_health()
+	_survivor_max_health_multiplier += maxf(0.0, amount)
+	health += get_max_health() - previous_max
+	stats_changed.emit()
+
+
+func _survivor_cooldown_delta(delta: float, slot: StringName) -> float:
+	if not _survivor_mode:
+		return delta
+	if not _survivor_abilities.is_unlocked(slot):
+		return 0.0
+	return delta / _survivor_abilities.get_cooldown(slot)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_set_using_gamepad(false)
@@ -160,14 +205,15 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_timers(delta: float) -> void:
-	anchor_cooldown = maxf(0.0, anchor_cooldown - delta)
-	cascade_cooldown = maxf(0.0, cascade_cooldown - delta)
-	fold_cooldown = maxf(0.0, fold_cooldown - delta)
-	ultimate_cooldown = maxf(0.0, ultimate_cooldown - delta)
+	anchor_cooldown = maxf(0.0, anchor_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
+	cascade_cooldown = maxf(0.0, cascade_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
+	fold_cooldown = maxf(0.0, fold_cooldown - _survivor_cooldown_delta(delta, &"evade"))
+	ultimate_cooldown = maxf(0.0, ultimate_cooldown - _survivor_cooldown_delta(delta, &"ultimate"))
 	_invulnerable_time = maxf(0.0, _invulnerable_time - delta)
 	resolve = minf(MAX_RESOLVE, resolve + delta * 5.8)
 	mana = minf(MAX_MANA, mana + delta * 13.0)
 	_anchors = _anchors.filter(func(anchor: TerrainAnchor) -> bool: return is_instance_valid(anchor))
+	_check_fold_reset()
 
 
 func _update_buffers(delta: float) -> void:
@@ -223,8 +269,12 @@ func _update_state(delta: float) -> void:
 				else:
 					_set_state(State.FREE)
 		State.MANTLE_CHARGE:
-			_mantle_charge = minf(1.0, _mantle_charge + delta / 1.05)
-			_mantle_radius = lerpf(MANTLE_MIN_RADIUS, MANTLE_MAX_RADIUS, CombatMath.shaped_charge(_mantle_charge))
+			var tier := get_survivor_ability_tier(&"signature")
+			var charge_duration := [0.0, 0.62, 1.05, 1.18, 1.30][tier - 1] as float
+			_mantle_charge = 1.0 if charge_duration <= 0.0 else minf(1.0, _mantle_charge + delta / charge_duration)
+			var minimum_radius := [104.0, 120.0, MANTLE_MIN_RADIUS, 154.0, 178.0][tier - 1] as float
+			var maximum_radius := [104.0, 185.0, MANTLE_MAX_RADIUS, 286.0, 348.0][tier - 1] as float
+			_mantle_radius = lerpf(minimum_radius, maximum_radius, CombatMath.shaped_charge(_mantle_charge))
 			_mantle_center_local = aim_direction * lerpf(185.0, 265.0, _mantle_charge)
 			if not Input.is_action_pressed(&"signature") or _mantle_charge >= 1.0:
 				_release_mantle()
@@ -252,6 +302,8 @@ func _update_state(delta: float) -> void:
 			_state_time -= delta
 			if _state_time <= 0.0:
 				collision_mask = 2 | 4
+				if get_survivor_ability_tier(&"evade") >= 5:
+					_freeze_fold_zone(global_position)
 				distortion_requested.emit(global_position, 62.0, 0.48, &"fold")
 				_state_time = 0.08
 				_set_state(State.MANTLE_RECOVERY)
@@ -264,15 +316,15 @@ func _update_state(delta: float) -> void:
 
 
 func _handle_free_inputs() -> void:
-	if Input.is_action_just_pressed(&"ultimate") and ultimate_cooldown <= 0.0 and mana >= CONDUIT_COST:
+	if Input.is_action_just_pressed(&"ultimate") and is_survivor_ability_unlocked(&"ultimate") and ultimate_cooldown <= 0.0 and mana >= CONDUIT_COST:
 		_begin_arcane_conduit()
-	elif Input.is_action_just_pressed(&"ability_1") and anchor_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"ability_1") and is_survivor_ability_unlocked(&"ability_1") and anchor_cooldown <= 0.0:
 		_cast_terrain_anchor()
-	elif Input.is_action_just_pressed(&"ability_2") and cascade_cooldown <= 0.0 and mana >= CASCADE_COST:
+	elif Input.is_action_just_pressed(&"ability_2") and is_survivor_ability_unlocked(&"ability_2") and cascade_cooldown <= 0.0 and mana >= CASCADE_COST:
 		_begin_mental_cascade()
-	elif Input.is_action_just_pressed(&"evade") and fold_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"evade") and is_survivor_ability_unlocked(&"evade") and fold_cooldown <= 0.0:
 		_begin_fold_space()
-	elif Input.is_action_just_pressed(&"signature") and mana >= MANTLE_COST:
+	elif Input.is_action_just_pressed(&"signature") and is_survivor_ability_unlocked(&"signature") and mana >= MANTLE_COST:
 		_begin_eldritch_mantle()
 	elif (Input.is_action_just_pressed(&"primary") or _primary_buffer > 0.0) and mana >= FORESEE_COST:
 		_primary_buffer = 0.0
@@ -374,6 +426,8 @@ func _begin_eldritch_mantle() -> void:
 	_mantle_center_local = aim_direction * 185.0
 	audio_requested.emit(&"nad_mantle_charge", 0.32)
 	_set_state(State.MANTLE_CHARGE)
+	if get_survivor_ability_tier(&"signature") == 1:
+		_release_mantle()
 
 
 func _release_mantle() -> void:
@@ -388,36 +442,60 @@ func _release_mantle() -> void:
 
 func _apply_mantle() -> void:
 	_attack_resolved = true
-	var lock_duration := lerpf(1.60, 3.80, CombatMath.shaped_charge(_mantle_charge))
+	var tier := get_survivor_ability_tier(&"signature")
+	var minimum_locks := [0.62, 1.05, 1.60, 2.35, 3.20]
+	var maximum_locks := [0.62, 2.35, 3.80, 4.80, 6.0]
+	var lock_duration := lerpf(minimum_locks[tier - 1] as float, maximum_locks[tier - 1] as float, CombatMath.shaped_charge(_mantle_charge))
 	var packet := DamagePacket.nad_mantle(self, _mantle_charge)
+	var mantle_center := global_position + _mantle_center_local
 	for hurtbox: Area2D in _attack_area.get_overlapping_areas():
 		var target := hurtbox.get_parent() as Node2D
 		if not is_instance_valid(target) or not target.is_in_group(&"enemies"):
 			continue
-		target.call(&"apply_mental_focus", 2, 8.0)
+		target.call(&"apply_mental_focus", [1, 1, 2, 3, 5][tier - 1] as int, 8.0)
 		target.call(&"apply_control_lock", lock_duration)
-		var direction := (target.global_position - (global_position + _mantle_center_local)).normalized()
+		if tier >= 5 and target.has_method(&"pull_toward"):
+			target.call(&"pull_toward", mantle_center, 520.0)
+		var direction := (target.global_position - mantle_center).normalized()
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt > 0.0:
 			combat_impact.emit(target.global_position, direction, packet, 0.48 + _mantle_charge * 0.42)
-			mind_link_requested.emit(global_position + _mantle_center_local, target.global_position, 0.62)
+			mind_link_requested.emit(mantle_center, target.global_position, 0.62)
+		if tier >= 4:
+			_tether_mantle_neighbors(target, mantle_center, lock_duration, tier)
+
+
+func _tether_mantle_neighbors(origin: Node2D, mantle_center: Vector2, lock_duration: float, tier: int) -> void:
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D or enemy_node == origin:
+			continue
+		var neighbor := enemy_node as Node2D
+		if not neighbor.has_method(&"is_alive") or not bool(neighbor.call(&"is_alive")) or origin.global_position.distance_to(neighbor.global_position) > (150.0 if tier == 4 else 220.0):
+			continue
+		neighbor.call(&"apply_mental_focus", 1 if tier == 4 else 2, 8.0)
+		neighbor.call(&"apply_control_lock", lock_duration * (0.42 if tier == 4 else 0.72))
+		if tier >= 5 and neighbor.has_method(&"pull_toward"):
+			neighbor.call(&"pull_toward", mantle_center, 380.0)
+		mind_link_requested.emit(origin.global_position, neighbor.global_position, 0.58 if tier == 4 else 0.86)
 
 
 func _cast_terrain_anchor() -> void:
 	_anchors = _anchors.filter(func(anchor: TerrainAnchor) -> bool: return is_instance_valid(anchor))
-	if _anchors.size() >= 3:
+	var tier := get_survivor_ability_tier(&"ability_1")
+	var maximum_anchors := [1, 2, 3, 4, 5][tier - 1] as int
+	if _anchors.size() >= maximum_anchors:
 		_detonate_anchors()
 		return
 	if not _spend_mana(ANCHOR_COST):
 		return
 	var anchor := TerrainAnchor.new()
-	anchor.configure(self)
+	anchor.configure(self, tier)
 	get_parent().add_child(anchor)
 	anchor.global_position = global_position + aim_direction * 265.0
 	_anchors.append(anchor)
 	anchor_cooldown = 0.75
 	distortion_requested.emit(anchor.global_position, TerrainAnchor.RADIUS, 0.35, &"anchor_place")
-	audio_requested.emit(&"nad_anchor_place", float(_anchors.size()) / 3.0)
+	audio_requested.emit(&"nad_anchor_place", float(_anchors.size()) / float(maximum_anchors))
 	_state_time = 0.16
 	_set_state(State.ANCHOR_RECOVERY)
 	stats_changed.emit()
@@ -462,56 +540,149 @@ func _begin_mental_cascade() -> void:
 
 
 func _begin_cascade_active() -> void:
-	_set_attack_cone(CASCADE_REACH, CASCADE_HALF_WIDTH, aim_direction)
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var reaches := [220.0, 278.0, CASCADE_REACH, 386.0, 468.0]
+	var half_widths := [68.0, 108.0, CASCADE_HALF_WIDTH, 196.0, 248.0]
+	var cascade_reach := reaches[tier - 1] as float
+	_set_attack_cone(cascade_reach, half_widths[tier - 1] as float, aim_direction)
 	_attack_resolved = false
 	_attack_area.monitoring = true
 	_state_time = 0.09
-	distortion_requested.emit(global_position + aim_direction * CASCADE_REACH * 0.52, CASCADE_REACH * 0.55, 0.68, &"cascade")
+	distortion_requested.emit(global_position + aim_direction * cascade_reach * 0.52, cascade_reach * 0.55, 0.68, &"cascade")
 	audio_requested.emit(&"nad_cascade", 0.72)
 	_set_state(State.CASCADE_ACTIVE)
 
 
 func _apply_cascade() -> void:
 	_attack_resolved = true
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var directly_hit: Array[Node2D] = []
+	var direct_ids: Dictionary = {}
+	var extensions := 0
+	var direct_lock_found := false
 	for hurtbox: Area2D in _attack_area.get_overlapping_areas():
 		var target := hurtbox.get_parent() as Node2D
 		if not is_instance_valid(target) or not target.is_in_group(&"enemies"):
 			continue
 		var focus_before := _get_target_focus(target)
 		var was_locked := bool(target.call(&"is_control_locked"))
+		direct_lock_found = direct_lock_found or was_locked
 		target.call(&"apply_mental_focus", 1, 8.0)
-		if was_locked:
+		if was_locked and tier >= 2 and (tier >= 3 or extensions == 0):
 			target.call(&"extend_control_lock", 0.55 + 0.10 * float(focus_before), 6.0)
+			extensions += 1
 		var direction := (target.global_position - global_position).normalized()
 		var packet := DamagePacket.nad_cascade(self, focus_before)
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt > 0.0:
+			directly_hit.append(target)
+			direct_ids[target.get_instance_id()] = true
 			combat_impact.emit(target.global_position, direction, packet, 0.48 + 0.06 * float(focus_before))
 			mind_link_requested.emit(global_position, target.global_position, 0.68)
+	if tier >= 4:
+		_apply_cascade_web(directly_hit, direct_ids, direct_lock_found, tier)
+
+
+func _apply_cascade_web(origins: Array[Node2D], excluded_ids: Dictionary, share_lock: bool, tier: int) -> void:
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D:
+			continue
+		var target := enemy_node as Node2D
+		if excluded_ids.has(target.get_instance_id()) or _get_target_focus(target) <= 0:
+			continue
+		var linked := tier >= 5
+		if not linked:
+			for origin: Node2D in origins:
+				if origin.global_position.distance_to(target.global_position) <= 230.0:
+					linked = true
+					break
+		if not linked:
+			continue
+		var direction := (target.global_position - global_position).normalized()
+		var packet := DamagePacket.nad_cascade(self, _get_target_focus(target))
+		packet.health_damage *= 0.54 if tier == 4 else 0.78
+		packet.resolve_damage *= 0.68 if tier == 4 else 0.92
+		if share_lock and tier >= 5:
+			target.call(&"apply_control_lock", 1.6)
+		else:
+			target.call(&"apply_mental_focus", 1, 8.0)
+		if DamageResolver.apply_with_result(target, packet, direction) > 0.0:
+			mind_link_requested.emit(origins[0].global_position if not origins.is_empty() else global_position, target.global_position, 0.76)
 
 
 func _begin_fold_space() -> void:
+	var tier := get_survivor_ability_tier(&"evade")
 	var move_input := Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
 	_fold_direction = move_input.normalized() if not move_input.is_zero_approx() else aim_direction
-	var distance := 168.0
-	_state_time = 0.12
+	var distances := [92.0, 132.0, 168.0, 220.0, 268.0]
+	var durations := [0.09, 0.105, 0.12, 0.14, 0.16]
+	var distance := distances[tier - 1] as float
+	if tier >= 4:
+		var aimed_anchor := _find_aimed_anchor()
+		if is_instance_valid(aimed_anchor):
+			var to_anchor := aimed_anchor.global_position - global_position
+			_fold_direction = to_anchor.normalized()
+			distance = to_anchor.length()
+	_state_time = durations[tier - 1] as float
 	_fold_speed = distance / _state_time
-	_invulnerable_time = 0.22
+	_invulnerable_time = [0.0, 0.08, 0.22, 0.32, 0.44][tier - 1] as float
 	fold_cooldown = 2.8
-	collision_mask = 4
+	collision_mask = 4 if tier >= 2 else 2 | 4
+	if tier >= 5:
+		_freeze_fold_zone(global_position)
 	distortion_requested.emit(global_position, 58.0, 0.46, &"fold")
 	audio_requested.emit(&"nad_fold", 0.62)
 	_set_state(State.FOLD_SPACE)
 	stats_changed.emit()
 
 
+func _find_aimed_anchor() -> TerrainAnchor:
+	var best: TerrainAnchor
+	var best_distance := INF
+	for anchor: TerrainAnchor in _anchors:
+		if not is_instance_valid(anchor):
+			continue
+		var to_anchor := anchor.global_position - global_position
+		if to_anchor.length() > 760.0 or aim_direction.dot(to_anchor.normalized()) < 0.82:
+			continue
+		if to_anchor.length_squared() < best_distance:
+			best = anchor
+			best_distance = to_anchor.length_squared()
+	return best
+
+
+func _freeze_fold_zone(at: Vector2) -> void:
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if enemy_node is Node2D and at.distance_to((enemy_node as Node2D).global_position) <= 126.0 and enemy_node.has_method(&"apply_control_lock"):
+			enemy_node.call(&"apply_control_lock", 1.25)
+	distortion_requested.emit(at, 126.0, 0.82, &"fold")
+
+
+func _check_fold_reset() -> void:
+	if not _survivor_mode or get_survivor_ability_tier(&"evade") < 5 or fold_cooldown <= 0.0:
+		return
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node.has_method(&"is_alive") or bool(enemy_node.call(&"is_alive")) or not enemy_node.has_method(&"is_control_locked") or not bool(enemy_node.call(&"is_control_locked")):
+			continue
+		var target_id := enemy_node.get_instance_id()
+		if _fold_reset_defeats.has(target_id):
+			continue
+		_fold_reset_defeats[target_id] = true
+		fold_cooldown = 0.0
+		announcement_requested.emit("SPACE REFOLDED")
+		break
+
+
 func _begin_arcane_conduit() -> void:
 	if not _spend_mana(CONDUIT_COST):
 		return
 	ultimate_cooldown = 22.0
-	_state_time = 0.64
-	_invulnerable_time = 1.80
-	_set_attack_circle(CONDUIT_RADIUS, Vector2.ZERO)
+	var tier := get_survivor_ability_tier(&"ultimate")
+	var radii := [250.0, 420.0, CONDUIT_RADIUS, 780.0, 2200.0]
+	_conduit_radius = radii[tier - 1] as float
+	_state_time = [0.40, 0.52, 0.64, 0.72, 0.80][tier - 1] as float
+	_invulnerable_time = [0.25, 0.85, 1.80, 2.05, 2.40][tier - 1] as float
+	_set_attack_circle(_conduit_radius, Vector2.ZERO)
 	_attack_area.monitoring = true
 	audio_requested.emit(&"nad_ultimate_charge", 1.0)
 	announcement_requested.emit("ARCANE CONDUIT")
@@ -520,6 +691,7 @@ func _begin_arcane_conduit() -> void:
 
 
 func _resolve_arcane_conduit() -> void:
+	var tier := get_survivor_ability_tier(&"ultimate")
 	var hit_targets: Dictionary = {}
 	for hurtbox: Area2D in _attack_area.get_overlapping_areas():
 		var target := hurtbox.get_parent() as Node2D
@@ -531,16 +703,24 @@ func _resolve_arcane_conduit() -> void:
 		hit_targets[target_id] = true
 		var focus_before := _get_target_focus(target)
 		var was_locked := bool(target.call(&"is_control_locked"))
-		target.call(&"apply_mental_focus", 1, 9.0)
-		target.call(&"apply_control_lock", 2.80 + 0.16 * float(focus_before) if was_locked else 0.75)
+		target.call(&"apply_mental_focus", [1, 2, 1, 2, 5][tier - 1] as int, 9.0)
+		var lock_duration := 0.42 if tier == 1 else (1.25 if tier == 2 else (2.80 + 0.16 * float(focus_before) if was_locked else 0.75))
+		if tier == 4 and was_locked:
+			lock_duration = 4.5
+		elif tier >= 5:
+			lock_duration = 6.0
+		target.call(&"apply_control_lock", lock_duration)
 		var direction := (target.global_position - global_position).normalized()
 		var packet := DamagePacket.nad_conduit(self, focus_before, was_locked)
+		if tier >= 5:
+			packet.health_damage *= 1.0 + 0.08 * float(focus_before)
+			packet.resolve_damage *= 1.0 + 0.12 * float(focus_before)
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt > 0.0:
 			combat_impact.emit(target.global_position, direction, packet, 1.0 if was_locked else 0.62)
 			mind_link_requested.emit(global_position, target.global_position, 1.0 if was_locked else 0.66)
 	_attack_area.monitoring = false
-	distortion_requested.emit(global_position, CONDUIT_RADIUS, 1.0, &"conduit")
+	distortion_requested.emit(global_position, _conduit_radius, 1.0, &"conduit")
 	audio_requested.emit(&"nad_ultimate", 1.0)
 	_state_time = 0.68
 	_set_state(State.ULTIMATE_RECOVERY)
@@ -576,7 +756,7 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 func heal(amount: float) -> void:
 	if amount <= 0.0 or _state == State.DEAD:
 		return
-	health = minf(MAX_HEALTH, health + amount)
+	health = minf(get_max_health(), health + amount)
 	stats_changed.emit()
 
 

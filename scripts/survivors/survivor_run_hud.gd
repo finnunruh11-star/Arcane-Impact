@@ -98,14 +98,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var key_event := event as InputEventKey
 	if _mode == &"upgrade":
-		var option_index := -1
-		match key_event.physical_keycode:
-			KEY_1:
-				option_index = 0
-			KEY_2:
-				option_index = 1
-			KEY_3:
-				option_index = 2
+		var option_index := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6].find(key_event.physical_keycode)
 		if option_index >= 0:
 			_choose_upgrade(option_index)
 	elif _mode == &"end":
@@ -151,22 +144,24 @@ func _build_modal() -> void:
 	shade.color = Color(0.005, 0.010, 0.012, 0.84)
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	_overlay.add_child(shade)
-	var modal := _make_panel(Vector2(250.0, 118.0), Vector2(780.0, 484.0), Color(0.018, 0.031, 0.038, 0.99), Color("58b798"))
+	var modal := _make_panel(Vector2(104.0, 70.0), Vector2(1072.0, 572.0), Color(0.018, 0.031, 0.038, 0.99), Color("58b798"))
 	_overlay.add_child(modal)
-	_modal_title = _make_label("LEVEL ASCENDED", Vector2(36.0, 24.0), Vector2(708.0, 44.0), 30, Color("f4dfb0"), HORIZONTAL_ALIGNMENT_CENTER)
+	_modal_title = _make_label("LEVEL ASCENDED", Vector2(36.0, 20.0), Vector2(1000.0, 44.0), 30, Color("f4dfb0"), HORIZONTAL_ALIGNMENT_CENTER)
 	modal.add_child(_modal_title)
-	_modal_subtitle = _make_label("Choose one boon", Vector2(36.0, 68.0), Vector2(708.0, 28.0), 13, Color("9fb9b4"), HORIZONTAL_ALIGNMENT_CENTER)
+	_modal_subtitle = _make_label("Choose one boon", Vector2(36.0, 62.0), Vector2(1000.0, 28.0), 13, Color("9fb9b4"), HORIZONTAL_ALIGNMENT_CENTER)
 	modal.add_child(_modal_subtitle)
-	for index: int in 3:
-		var button := _make_button(Vector2(52.0, 118.0 + float(index) * 94.0), Vector2(676.0, 76.0), "BOON", Color("4c9f89"))
+	for index: int in 6:
+		var column := index % 2
+		var row := index / 2
+		var button := _make_button(Vector2(38.0 + float(column) * 508.0, 108.0 + float(row) * 136.0), Vector2(488.0, 116.0), "BOON", Color("4c9f89"))
 		button.pressed.connect(func() -> void: _choose_upgrade(index))
 		modal.add_child(button)
 		_choice_buttons.append(button)
-	_retry_button = _make_button(Vector2(138.0, 242.0), Vector2(234.0, 58.0), "RETRY RUN", Color("c58b47"))
+	_retry_button = _make_button(Vector2(272.0, 268.0), Vector2(234.0, 58.0), "RETRY RUN", Color("c58b47"))
 	_retry_button.pressed.connect(func() -> void: retry_requested.emit())
 	_retry_button.visible = false
 	modal.add_child(_retry_button)
-	_roster_button = _make_button(Vector2(408.0, 242.0), Vector2(234.0, 58.0), "RETURN TO ROSTER", Color("648f8a"))
+	_roster_button = _make_button(Vector2(566.0, 268.0), Vector2(234.0, 58.0), "RETURN TO ROSTER", Color("648f8a"))
 	_roster_button.pressed.connect(func() -> void: roster_requested.emit())
 	_roster_button.visible = false
 	modal.add_child(_roster_button)
@@ -217,7 +212,7 @@ func _make_button(at: Vector2, button_size: Vector2, text: String, accent: Color
 	button.text = text
 	button.focus_mode = Control.FOCUS_ALL
 	button.add_theme_font_override(&"font", _font)
-	button.add_theme_font_size_override(&"font_size", 14)
+	button.add_theme_font_size_override(&"font_size", 12)
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.028, 0.050, 0.058, 0.98)
 	normal.border_color = Color(accent, 0.78)

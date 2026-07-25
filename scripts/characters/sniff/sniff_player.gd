@@ -2,6 +2,8 @@ class_name SniffPlayer
 extends CharacterBody2D
 
 
+const SurvivorAbilityStateScript := preload("res://scripts/survivors/survivor_ability_state.gd")
+
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
 signal audio_requested(cue: StringName, power: float)
@@ -61,6 +63,9 @@ var _dash_charge := 0.0
 var _dash_direction := Vector2.RIGHT
 var _dash_speed := 0.0
 var _dash_spent := 0
+var _dash_origin := Vector2.ZERO
+var _dash_last_burst := Vector2.ZERO
+var _dash_detonated_ids: Dictionary = {}
 var _surge_spent := 0
 var _surge_radius := SURGE_BASE_RADIUS
 var _ultimate_snapshot := 0
@@ -78,6 +83,8 @@ var _has_movement_bounds := false
 var _survivor_mode := false
 var _survivor_target: Node2D
 var _survivor_power_multiplier := 1.0
+var _survivor_max_health_multiplier := 1.0
+var _survivor_abilities = SurvivorAbilityStateScript.new()
 
 
 func _ready() -> void:
@@ -139,6 +146,45 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
+	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
+
+
+func is_survivor_ability_unlocked(slot: StringName) -> bool:
+	return not _survivor_mode or _survivor_abilities.is_unlocked(slot)
+
+
+func get_survivor_ability_rank(slot: StringName) -> int:
+	return _survivor_abilities.get_rank(slot)
+
+
+func get_survivor_ability_tier(slot: StringName) -> int:
+	return _survivor_abilities.get_tier(slot) if _survivor_mode else 3
+
+
+func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
+
+
+func get_max_health() -> float:
+	return MAX_HEALTH * _survivor_max_health_multiplier
+
+
+func apply_survivor_fortitude(amount: float) -> void:
+	var previous_max := get_max_health()
+	_survivor_max_health_multiplier += maxf(0.0, amount)
+	health += get_max_health() - previous_max
+	stats_changed.emit()
+
+
+func _survivor_cooldown_delta(delta: float, slot: StringName) -> float:
+	if not _survivor_mode:
+		return delta
+	if not _survivor_abilities.is_unlocked(slot):
+		return 0.0
+	return delta / _survivor_abilities.get_cooldown(slot)
+
+
 func set_movement_bounds(bounds: Rect2) -> void:
 	_movement_bounds = bounds.abs()
 	_has_movement_bounds = _movement_bounds.has_area()
@@ -172,10 +218,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_timers(delta: float) -> void:
-	blessing_cooldown = maxf(0.0, blessing_cooldown - delta)
-	surge_cooldown = maxf(0.0, surge_cooldown - delta)
-	flashstep_cooldown = maxf(0.0, flashstep_cooldown - delta)
-	ultimate_cooldown = maxf(0.0, ultimate_cooldown - delta)
+	blessing_cooldown = maxf(0.0, blessing_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
+	surge_cooldown = maxf(0.0, surge_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
+	flashstep_cooldown = maxf(0.0, flashstep_cooldown - _survivor_cooldown_delta(delta, &"evade"))
+	ultimate_cooldown = maxf(0.0, ultimate_cooldown - _survivor_cooldown_delta(delta, &"ultimate"))
 	_invulnerable_time = maxf(0.0, _invulnerable_time - delta)
 	_overcharge_time = maxf(0.0, _overcharge_time - delta)
 	resolve = minf(MAX_RESOLVE, resolve + delta * 6.5)
@@ -226,11 +272,13 @@ func _update_state(delta: float) -> void:
 				else:
 					_set_state(State.FREE)
 		State.DASH_CHARGE:
-			_dash_charge = minf(1.0, _dash_charge + delta / 0.82)
+			var charge_duration := [0.0, 0.42, 0.82, 0.98, 1.10][get_survivor_ability_tier(&"signature") - 1] as float
+			_dash_charge = 1.0 if charge_duration <= 0.0 else minf(1.0, _dash_charge + delta / charge_duration)
 			if not Input.is_action_pressed(&"signature") or _dash_charge >= 1.0:
 				_release_thunder_dash()
 		State.DASH_ACTIVE:
 			_apply_dash_hits()
+			_apply_dash_route_detonations()
 			_state_time -= delta
 			if _state_time <= 0.0:
 				_attack_area.monitoring = false
@@ -247,6 +295,8 @@ func _update_state(delta: float) -> void:
 			if _state_time <= 0.0:
 				_attack_area.monitoring = false
 				_set_enemy_phasing(false)
+				if get_survivor_ability_tier(&"evade") >= 4:
+					_resolve_flashstep_arrival()
 				_state_time = 0.09
 				_set_state(State.DASH_RECOVERY)
 		State.ULTIMATE_STARTUP:
@@ -258,15 +308,15 @@ func _update_state(delta: float) -> void:
 
 
 func _handle_free_inputs() -> void:
-	if Input.is_action_just_pressed(&"ultimate") and ultimate_cooldown <= 0.0:
+	if Input.is_action_just_pressed(&"ultimate") and is_survivor_ability_unlocked(&"ultimate") and ultimate_cooldown <= 0.0:
 		_begin_divine_annihilation()
-	elif Input.is_action_just_pressed(&"ability_1") and blessing_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"ability_1") and is_survivor_ability_unlocked(&"ability_1") and blessing_cooldown <= 0.0:
 		_cast_roaring_blessing()
-	elif Input.is_action_just_pressed(&"ability_2") and surge_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"ability_2") and is_survivor_ability_unlocked(&"ability_2") and surge_cooldown <= 0.0:
 		_begin_explosive_surge()
-	elif Input.is_action_just_pressed(&"evade") and flashstep_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"evade") and is_survivor_ability_unlocked(&"evade") and flashstep_cooldown <= 0.0:
 		_begin_flashstep()
-	elif Input.is_action_just_pressed(&"signature"):
+	elif Input.is_action_just_pressed(&"signature") and is_survivor_ability_unlocked(&"signature"):
 		_begin_thunder_dash()
 	elif Input.is_action_just_pressed(&"primary") or _primary_buffer > 0.0:
 		_primary_buffer = 0.0
@@ -377,18 +427,25 @@ func _begin_thunder_dash() -> void:
 	_dash_direction = aim_direction
 	audio_requested.emit(&"sniff_dash_charge", 0.25)
 	_set_state(State.DASH_CHARGE)
+	if get_survivor_ability_tier(&"signature") == 1:
+		_release_thunder_dash()
 
 
 func _release_thunder_dash() -> void:
+	var tier := get_survivor_ability_tier(&"signature")
 	var move_input := Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
 	_dash_direction = move_input.normalized() if not move_input.is_zero_approx() else aim_direction
 	aim_direction = _dash_direction
 	_dash_spent = mini(3, blessing)
 	spend_blessing(_dash_spent)
-	var distance := lerpf(DASH_MIN_DISTANCE, DASH_MAX_DISTANCE, CombatMath.shaped_charge(_dash_charge))
-	_state_time = lerpf(0.16, 0.27, _dash_charge)
+	var maximum_distance := [230.0, 340.0, DASH_MAX_DISTANCE, 535.0, 650.0][tier - 1] as float
+	var distance := lerpf(DASH_MIN_DISTANCE, maximum_distance, CombatMath.shaped_charge(_dash_charge))
+	_state_time = lerpf(0.16, 0.27 + 0.025 * float(maxi(0, tier - 3)), _dash_charge)
 	_dash_speed = distance / _state_time
 	_hit_target_ids.clear()
+	_dash_detonated_ids.clear()
+	_dash_origin = global_position
+	_dash_last_burst = global_position
 	_set_attack_radius(48.0)
 	_attack_area.monitoring = true
 	_set_enemy_phasing(true)
@@ -404,10 +461,37 @@ func _apply_dash_hits() -> void:
 	_apply_traversal_hits(packet, true)
 
 
+func _apply_dash_route_detonations() -> void:
+	if get_survivor_ability_tier(&"signature") < 5 or global_position.distance_to(_dash_last_burst) < 72.0:
+		return
+	_dash_last_burst = global_position
+	thunder_burst_requested.emit(global_position, 104.0, 0.58, false)
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D:
+			continue
+		var target := enemy_node as Node2D
+		var target_id := target.get_instance_id()
+		if _dash_detonated_ids.has(target_id) or not _target_is_alive(target) or global_position.distance_to(target.global_position) > 104.0:
+			continue
+		_dash_detonated_ids[target_id] = true
+		var direction := (target.global_position - _dash_origin).normalized()
+		var detonation := DamagePacket.sniff_dash(self, _dash_charge, _dash_spent)
+		detonation.health_damage *= 0.46
+		detonation.resolve_damage *= 0.60
+		var dealt := DamageResolver.apply_with_result(target, detonation, direction)
+		if dealt > 0.0:
+			lightning_arc_requested.emit(_dash_last_burst - _dash_direction * 72.0, target.global_position, 0.82)
+			combat_impact.emit(target.global_position, direction, detonation, 0.52)
+
+
 func _cast_roaring_blessing() -> void:
-	_apply_self_cost(MAX_HEALTH * 0.08)
-	gain_blessing(4)
-	_overcharge_time = 3.8
+	var tier := get_survivor_ability_tier(&"ability_1")
+	var costs := [0.12, 0.10, 0.08, 0.06, 0.04]
+	var gains := [2, 3, 4, 5, 7]
+	var durations := [2.0, 2.8, 3.8, 5.0, 6.5]
+	_apply_self_cost(get_max_health() * (costs[tier - 1] as float))
+	gain_blessing(gains[tier - 1] as int)
+	_overcharge_time = durations[tier - 1] as float
 	blessing_cooldown = 8.0
 	thunder_burst_requested.emit(global_position, 92.0, 0.48, false)
 	effect_requested.emit(&"sniff_blessing", global_position, aim_direction, 1.25)
@@ -419,10 +503,15 @@ func _cast_roaring_blessing() -> void:
 
 
 func _begin_explosive_surge() -> void:
-	_surge_spent = blessing
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var stack_caps := [3, 6, MAX_BLESSING, MAX_BLESSING, MAX_BLESSING]
+	var health_costs := [0.13, 0.11, 0.10, 0.08, 0.05]
+	var base_radii := [104.0, 126.0, SURGE_BASE_RADIUS, 176.0, 220.0]
+	var stack_radii := [5.0, 6.0, SURGE_STACK_RADIUS, 10.0, 14.0]
+	_surge_spent = mini(blessing, stack_caps[tier - 1] as int)
 	spend_blessing(_surge_spent)
-	_apply_self_cost(MAX_HEALTH * 0.10)
-	_surge_radius = SURGE_BASE_RADIUS + SURGE_STACK_RADIUS * float(_surge_spent)
+	_apply_self_cost(get_max_health() * (health_costs[tier - 1] as float))
+	_surge_radius = (base_radii[tier - 1] as float) + (stack_radii[tier - 1] as float) * float(_surge_spent)
 	_set_attack_radius(_surge_radius)
 	_attack_area.monitoring = true
 	surge_cooldown = 7.5
@@ -434,6 +523,8 @@ func _begin_explosive_surge() -> void:
 
 func _resolve_explosive_surge() -> void:
 	var packet := DamagePacket.sniff_surge(self, _surge_spent)
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var hit_count := 0
 	_hit_target_ids.clear()
 	for hurtbox: Area2D in _attack_area.get_overlapping_areas():
 		var target := hurtbox.get_parent() as Node2D
@@ -446,26 +537,38 @@ func _resolve_explosive_surge() -> void:
 		var direction := (target.global_position - global_position).normalized()
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt > 0.0:
+			hit_count += 1
+			if tier >= 4:
+				var echo := DamagePacket.sniff_surge(self, _surge_spent)
+				echo.health_damage *= 0.38 if tier == 4 else 0.64
+				echo.resolve_damage *= 0.52 if tier == 4 else 0.78
+				DamageResolver.apply(target, echo, direction)
 			combat_impact.emit(target.global_position, direction, packet, clampf(0.48 + float(_surge_spent) * 0.05, 0.0, 1.0))
 			lightning_arc_requested.emit(global_position, target.global_position, 0.55 + float(_surge_spent) * 0.035)
 	_attack_area.monitoring = false
 	thunder_burst_requested.emit(global_position, _surge_radius, float(_surge_spent) / float(MAX_BLESSING), false)
 	audio_requested.emit(&"sniff_surge", float(_surge_spent) / float(MAX_BLESSING))
+	if tier >= 5:
+		gain_blessing(mini(5, hit_count))
 	_state_time = 0.43
 	_set_state(State.SURGE_RECOVERY)
 
 
 func _begin_flashstep() -> void:
+	var tier := get_survivor_ability_tier(&"evade")
 	var move_input := Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
 	_dash_direction = move_input.normalized() if not move_input.is_zero_approx() else aim_direction
-	var distance := 158.0
-	_state_time = 0.13
+	var distances := [104.0, 132.0, 158.0, 198.0, 242.0]
+	var durations := [0.10, 0.115, 0.13, 0.145, 0.16]
+	var distance := distances[tier - 1] as float
+	_state_time = durations[tier - 1] as float
 	_dash_speed = distance / _state_time
 	_hit_target_ids.clear()
 	_set_attack_radius(43.0)
-	_attack_area.monitoring = true
-	_set_enemy_phasing(true)
-	_invulnerable_time = maxf(_invulnerable_time, 0.23)
+	_attack_area.monitoring = tier >= 2
+	_set_enemy_phasing(tier >= 2)
+	var invulnerability := [0.08, 0.15, 0.23, 0.32, 0.45][tier - 1] as float
+	_invulnerable_time = maxf(_invulnerable_time, invulnerability)
 	flashstep_cooldown = FLASHSTEP_COOLDOWN
 	effect_requested.emit(&"sniff_dash", global_position, _dash_direction, 0.94)
 	lightning_arc_requested.emit(global_position, global_position + _dash_direction * distance, 0.56)
@@ -476,6 +579,28 @@ func _begin_flashstep() -> void:
 
 func _apply_flashstep_hits() -> void:
 	_apply_traversal_hits(DamagePacket.sniff_flashstep(self, blessing), false)
+
+
+func _resolve_flashstep_arrival() -> void:
+	var tier := get_survivor_ability_tier(&"evade")
+	var radius := 112.0 if tier == 4 else 158.0
+	var packet := DamagePacket.sniff_flashstep(self, blessing)
+	packet.health_damage *= 0.72 if tier == 4 else 1.18
+	packet.resolve_damage *= 0.80 if tier == 4 else 1.32
+	var hits := 0
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D:
+			continue
+		var target := enemy_node as Node2D
+		if not _target_is_alive(target) or global_position.distance_to(target.global_position) > radius:
+			continue
+		var direction := (target.global_position - global_position).normalized()
+		if DamageResolver.apply_with_result(target, packet, direction) > 0.0:
+			hits += 1
+			lightning_arc_requested.emit(global_position, target.global_position, 0.72)
+	thunder_burst_requested.emit(global_position, radius, 0.68 if tier == 4 else 1.0, false)
+	if tier >= 5:
+		gain_blessing(mini(3, hits))
 
 
 func _apply_traversal_hits(packet: DamagePacket, reward_blessing: bool) -> void:
@@ -495,15 +620,48 @@ func _apply_traversal_hits(packet: DamagePacket, reward_blessing: bool) -> void:
 			gain_blessing(1)
 		combat_impact.emit(target.global_position, direction, packet, clampf(packet.health_damage / 62.0, 0.24, 0.92))
 		lightning_arc_requested.emit(global_position - direction * 36.0, target.global_position, 0.62)
+		if packet.survivor_ability_slot == &"signature" and get_survivor_ability_tier(&"signature") >= 4:
+			_fork_thunder_dash(target, packet)
+
+
+func _fork_thunder_dash(primary_target: Node2D, packet: DamagePacket) -> void:
+	var tier := get_survivor_ability_tier(&"signature")
+	var candidates: Array[Node2D] = []
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D or enemy_node == primary_target:
+			continue
+		var candidate := enemy_node as Node2D
+		if _target_is_alive(candidate) and primary_target.global_position.distance_to(candidate.global_position) <= (250.0 if tier == 4 else 330.0):
+			candidates.append(candidate)
+	candidates.sort_custom(func(left: Node2D, right: Node2D) -> bool:
+		return primary_target.global_position.distance_squared_to(left.global_position) < primary_target.global_position.distance_squared_to(right.global_position)
+	)
+	var previous := primary_target
+	for index: int in mini(1 if tier == 4 else 3, candidates.size()):
+		var target := candidates[index]
+		var target_id := target.get_instance_id()
+		if _hit_target_ids.has(target_id):
+			continue
+		_hit_target_ids[target_id] = true
+		var chain_direction := (target.global_position - previous.global_position).normalized()
+		var chain_packet := DamagePacket.sniff_dash(self, _dash_charge, _dash_spent)
+		chain_packet.health_damage *= 0.58 - float(index) * 0.09
+		chain_packet.resolve_damage *= 0.72 - float(index) * 0.08
+		if DamageResolver.apply_with_result(target, chain_packet, chain_direction) > 0.0:
+			gain_blessing(1)
+			lightning_arc_requested.emit(previous.global_position, target.global_position, 0.92 - float(index) * 0.12)
+			combat_impact.emit(target.global_position, chain_direction, chain_packet, 0.56)
+		previous = target
 
 
 func _begin_divine_annihilation() -> void:
+	var tier := get_survivor_ability_tier(&"ultimate")
 	_ultimate_snapshot = blessing
 	_ultimate_crowned = blessing >= MAX_BLESSING
 	spend_blessing(blessing)
-	_apply_self_cost(MAX_HEALTH * 0.15)
+	_apply_self_cost(get_max_health() * 0.15)
 	ultimate_cooldown = 20.0
-	_state_time = 0.68
+	_state_time = [0.44, 0.56, 0.68, 0.76, 0.84][tier - 1] as float
 	if _ultimate_crowned:
 		_invulnerable_time = maxf(_invulnerable_time, 1.72)
 	audio_requested.emit(&"sniff_ultimate_charge", float(_ultimate_snapshot) / float(MAX_BLESSING))
@@ -513,25 +671,39 @@ func _begin_divine_annihilation() -> void:
 
 
 func _resolve_divine_annihilation() -> void:
+	var tier := get_survivor_ability_tier(&"ultimate")
 	var packet := DamagePacket.sniff_annihilation(self, _ultimate_snapshot)
+	var radii := [280.0, 410.0, ULTIMATE_RADIUS, 780.0, 2200.0]
+	var target_limits := [3, 6, 999, 999, 999]
+	var ultimate_radius := radii[tier - 1] as float
 	var targets: Array[Node2D] = []
 	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
 		if enemy_node is Node2D and _target_is_alive(enemy_node as Node2D):
 			var target := enemy_node as Node2D
-			if global_position.distance_to(target.global_position) <= ULTIMATE_RADIUS:
+			if global_position.distance_to(target.global_position) <= ultimate_radius:
 				targets.append(target)
 	targets.sort_custom(func(left: Node2D, right: Node2D) -> bool:
 		return global_position.distance_squared_to(left.global_position) < global_position.distance_squared_to(right.global_position)
 	)
 	var arc_origin := global_position
-	for target: Node2D in targets:
+	var struck := 0
+	for target: Node2D in targets.slice(0, mini(target_limits[tier - 1] as int, targets.size())):
 		var direction := (target.global_position - global_position).normalized()
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt > 0.0:
+			struck += 1
+			if tier >= 4:
+				var aftershock := DamagePacket.sniff_annihilation(self, _ultimate_snapshot)
+				aftershock.health_damage *= 0.38 if tier == 4 else 0.72
+				aftershock.resolve_damage *= 0.55 if tier == 4 else 0.86
+				DamageResolver.apply(target, aftershock, direction)
 			lightning_arc_requested.emit(arc_origin, target.global_position, 1.0)
 			combat_impact.emit(target.global_position, direction, packet, 1.0)
 			arc_origin = target.global_position
-	thunder_burst_requested.emit(global_position, ULTIMATE_RADIUS, 1.0, true)
+	thunder_burst_requested.emit(global_position, ultimate_radius, 1.0, true)
+	if tier >= 5:
+		gain_blessing(mini(MAX_BLESSING, struck))
+		_overcharge_time = maxf(_overcharge_time, 8.0)
 	audio_requested.emit(&"sniff_ultimate", 1.0)
 	_state_time = 0.72
 	_set_state(State.ULTIMATE_RECOVERY)
@@ -575,7 +747,7 @@ func _apply_self_cost(amount: float) -> float:
 func heal(amount: float) -> void:
 	if amount <= 0.0 or _state == State.DEAD:
 		return
-	health = minf(MAX_HEALTH, health + amount)
+	health = minf(get_max_health(), health + amount)
 	stats_changed.emit()
 
 

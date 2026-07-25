@@ -16,6 +16,7 @@ var _owner: Node2D
 var _kind := Kind.ARROW
 var _direction := Vector2.RIGHT
 var _charge := 0.0
+var _ability_slot := StringName()
 var _origin := Vector2.ZERO
 var _speed := 960.0
 var _remaining := 0.90
@@ -24,9 +25,10 @@ var _visual_time := 0.0
 var _resolved_ids: Dictionary = {}
 
 
-func configure(owner: Node2D, kind: Kind, direction: Vector2, charge := 0.0) -> void:
+func configure(owner: Node2D, kind: Kind, direction: Vector2, charge := 0.0, ability_slot := StringName()) -> void:
 	_owner = owner
 	_kind = kind
+	_ability_slot = ability_slot
 	_direction = direction.normalized() if not direction.is_zero_approx() else Vector2.RIGHT
 	_charge = clampf(charge, 0.0, 1.0)
 	rotation = _direction.angle()
@@ -79,7 +81,7 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 	if _remaining <= 0.0:
 		if _kind == Kind.FLASK and is_instance_valid(_owner) and _owner.has_method(&"on_fin_projectile_expired"):
-			_owner.call(&"on_fin_projectile_expired", _kind, global_position, _direction, _charge)
+			_owner.call(&"on_fin_projectile_expired", _kind, global_position, _direction, _charge, _ability_slot)
 		queue_free()
 
 
@@ -92,7 +94,7 @@ func _on_area_entered(area: Area2D) -> void:
 		return
 	_resolved_ids[target_id] = true
 	if is_instance_valid(_owner) and _owner.has_method(&"on_fin_projectile_hit"):
-		_owner.call(&"on_fin_projectile_hit", target, global_position, _direction, _kind, _charge, _origin.distance_to(global_position))
+		_owner.call(&"on_fin_projectile_hit", target, global_position, _direction, _kind, _charge, _origin.distance_to(global_position), _ability_slot)
 	if _kind == Kind.FLASK or _pierces_remaining <= 0:
 		set_deferred(&"monitoring", false)
 		queue_free()
