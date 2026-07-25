@@ -9,6 +9,8 @@ The current playable build opens on a four-hero roster and sends the selected
 hero into a ten-minute run in the Shattered Reliquary. Enemies enter
 continuously from every edge, grow stronger over time, and automatically grant
 Arcane Essence when defeated.
+Each roster card also opens a training lab for that hero, with five resetting
+test dummies and instant level controls from 1 through 20.
 Each hero starts with their manually aimed basic attack and a rank-1 defensive
 escape. Level thresholds follow an easier 3, 5, 7, 9 Essence curve. Filling the
 bar pauses the horde and presents six random upgrades: three stats and three
@@ -82,6 +84,20 @@ All four slices include:
 | --- | --- | --- |
 | Select hero | A/D, arrows, mouse, or 1/2/3/4 | Left stick or D-pad |
 | Begin run | Enter, Space, F, or button click | A or X |
+| Begin training | Click `TRAIN WITH` on a hero card | Select the button and press A |
+
+### Training
+
+Training uses the selected hero's real combat kit against five self-resetting
+dummies. Level presets immediately set the basic attack and every active
+ability to the matching rank and behavior tier.
+
+| Action | Keyboard and mouse |
+| --- | --- |
+| Set level | Click 1, 5, 10, 15, or 20 |
+| Adjust one level | Page Up / Page Down or click + / - |
+| Reset all dummies | F or click `RESET` |
+| Return to roster | Escape or click `ROSTER` |
 
 ### Shared combat
 
@@ -203,7 +219,9 @@ godot --headless --path . --script res://tests/soak_nad_slice.gd
 godot --headless --path . --script res://tests/soak_fin_slice.gd
 godot --headless --path . --script res://tests/test_roster_navigation.gd
 godot --headless --path . --script res://tests/test_survivor_run.gd
+godot --headless --path . --script res://tests/test_training_mode.gd
 godot --path . --script res://tests/capture_survivor_progression.gd
+godot --path . --script res://tests/capture_training_mode.gd
 ```
 
 This prototype is not currently licensed for redistribution.

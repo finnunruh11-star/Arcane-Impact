@@ -20,7 +20,20 @@ godot --path .
 
 On the roster, select Kat, Sniff, Nad, or Fin with A/D, the arrow keys, mouse,
 number keys 1/2/3/4, the left stick, or the D-pad. Deploy with Enter, Space, F, a character
-button, Xbox A, or Xbox X.
+button, Xbox A, or Xbox X. Each hero card also has a `TRAIN WITH` button that
+opens the Shattered Reliquary training lab with that hero.
+
+## Training mode
+
+Training mode contains five stationary test dummies. They support the same
+damage, Resolve, curse, Mental Focus, control, Pierce Mark, pull, and chain
+targeting interactions as live enemies, then reset automatically after defeat.
+
+The top-right panel can set level 1, 5, 10, 15, or 20 instantly. The + and -
+buttons, or Page Up and Page Down, adjust one level at a time. Changing level
+sets the basic attack and all five active abilities to that rank and tier, so
+the complete kit is available immediately. Press F or `RESET` to restore every
+dummy, and Escape or `ROSTER` to leave training.
 
 ## Goal and encounter flow
 

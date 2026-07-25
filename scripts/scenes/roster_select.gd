@@ -11,6 +11,8 @@ const HERO_CENTERS := [Vector2(172.0, 320.0), Vector2(484.0, 320.0), Vector2(796
 const HERO_ACCENTS := [Color("cf5268"), Color("42d7ed"), Color("78d6a6"), Color("dfbd58")]
 const HERO_CARD_POSITIONS := [Vector2(24.0, 126.0), Vector2(336.0, 126.0), Vector2(648.0, 126.0), Vector2(960.0, 126.0)]
 const HERO_CARD_SIZE := Vector2(296.0, 514.0)
+const TRAINING_SCENE := "res://scenes/sandbox/training_run.tscn"
+const TRAINING_HERO_SETTING := "arcane_impact/training_hero_index"
 
 var _selected := 0
 var _transitioning := false
@@ -20,6 +22,7 @@ var _panels: Array[Panel] = []
 var _buttons: Array[Button] = []
 var _heroes: Array[Node2D] = []
 var _fade: ColorRect
+var _next_scene := ""
 
 
 func _enter_tree() -> void:
@@ -47,7 +50,7 @@ func _process(delta: float) -> void:
 		_transition_time += delta
 		_fade.color.a = clampf(_transition_time / 0.20, 0.0, 1.0)
 		if _transition_time >= 0.20:
-			get_tree().change_scene_to_file(HERO_SCENES[_selected])
+			get_tree().change_scene_to_file(_next_scene)
 		return
 	if Input.is_action_just_pressed(&"move_left") or Input.is_action_just_pressed(&"ui_left"):
 		_select(posmod(_selected - 1, HERO_SCENES.size()))
@@ -173,11 +176,15 @@ func _build_interface() -> void:
 		var abilities := _make_label(String(data[5]), Vector2(14.0, 378.0), Vector2(268.0, 52.0), 8, Color("81999b"), HORIZONTAL_ALIGNMENT_CENTER)
 		abilities.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		panel.add_child(abilities)
-		var button := _make_button(Vector2(46.0, 446.0), Vector2(204.0, 44.0), "BEGIN %s RUN" % String(data[1]), accent)
+		var button := _make_button(Vector2(46.0, 432.0), Vector2(204.0, 31.0), "BEGIN %s RUN" % String(data[1]), accent)
 		button.mouse_entered.connect(func() -> void: _select(index))
 		button.pressed.connect(func() -> void: _deploy(index))
 		panel.add_child(button)
 		_buttons.append(button)
+		var training_button := _make_button(Vector2(46.0, 470.0), Vector2(204.0, 31.0), "TRAIN WITH %s" % String(data[1]), Color("8aa6a7"))
+		training_button.mouse_entered.connect(func() -> void: _select(index))
+		training_button.pressed.connect(func() -> void: _deploy_training(index))
+		panel.add_child(training_button)
 
 	_fade = ColorRect.new()
 	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -199,10 +206,21 @@ func _deploy(index: int) -> void:
 	if _transitioning:
 		return
 	_selected = clampi(index, 0, HERO_SCENES.size() - 1)
+	_next_scene = HERO_SCENES[_selected]
 	_transitioning = true
 	_transition_time = 0.0
 	for device: int in Input.get_connected_joypads():
 		Input.start_joy_vibration(device, 0.22, 0.38, 0.12)
+
+
+func _deploy_training(index: int) -> void:
+	if _transitioning:
+		return
+	_selected = clampi(index, 0, HERO_SCENES.size() - 1)
+	ProjectSettings.set_setting(TRAINING_HERO_SETTING, _selected)
+	_next_scene = TRAINING_SCENE
+	_transitioning = true
+	_transition_time = 0.0
 
 func _refresh_selection() -> void:
 	for index: int in _panels.size():

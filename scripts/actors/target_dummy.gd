@@ -12,7 +12,13 @@ const RESET_DELAY := 0.95
 
 var health := MAX_HEALTH
 var resolve := MAX_RESOLVE
+var max_health := MAX_HEALTH
+var max_resolve := MAX_RESOLVE
 var is_resolve_broken := false
+var _curse_stacks := 0
+var _mental_focus := 0
+var _control_lock_time := 0.0
+var _pierce_marks := 0
 
 var _spawn_position := Vector2.ZERO
 var _knockback_velocity := Vector2.ZERO
@@ -70,9 +76,13 @@ func receive_hit(packet: DamagePacket, direction: Vector2) -> void:
 
 
 func reset_full() -> void:
-	health = MAX_HEALTH
-	resolve = MAX_RESOLVE
+	health = max_health
+	resolve = max_resolve
 	is_resolve_broken = false
+	_curse_stacks = 0
+	_mental_focus = 0
+	_control_lock_time = 0.0
+	_pierce_marks = 0
 	_break_timer = 0.0
 	_reset_timer = 0.0
 	_knockback_velocity = Vector2.ZERO
@@ -82,8 +92,69 @@ func reset_full() -> void:
 	queue_redraw()
 
 
+func is_alive() -> bool:
+	return health > 0.0 and _reset_timer <= 0.0
+
+
+func apply_curse(stacks: int, _duration: float) -> void:
+	_curse_stacks = mini(12, _curse_stacks + maxi(0, stacks))
+
+
+func is_cursed() -> bool:
+	return _curse_stacks > 0
+
+
+func get_curse_stacks() -> int:
+	return _curse_stacks
+
+
+func apply_mental_focus(stacks: int, _duration: float) -> void:
+	_mental_focus = mini(20, _mental_focus + maxi(0, stacks))
+
+
+func get_mental_focus() -> int:
+	return _mental_focus
+
+
+func apply_control_lock(duration: float) -> void:
+	_control_lock_time = maxf(_control_lock_time, duration)
+
+
+func extend_control_lock(duration: float, maximum: float) -> void:
+	_control_lock_time = minf(maximum, _control_lock_time + maxf(0.0, duration))
+
+
+func is_control_locked() -> bool:
+	return _control_lock_time > 0.0
+
+
+func apply_temporary_slow(_multiplier: float, _duration: float) -> void:
+	pass
+
+
+func apply_pierce_mark(stacks: int, _duration: float) -> void:
+	_pierce_marks = mini(12, _pierce_marks + maxi(0, stacks))
+
+
+func consume_pierce_marks(maximum: int) -> int:
+	var consumed := mini(_pierce_marks, maxi(0, maximum))
+	_pierce_marks -= consumed
+	return consumed
+
+
+func pull_toward(point: Vector2, force: float) -> void:
+	var direction := point - global_position
+	if not direction.is_zero_approx():
+		_knockback_velocity += direction.normalized() * maxf(0.0, force)
+
+
+func get_facing_direction() -> Vector2:
+	return Vector2.LEFT
+
+
 func _physics_process(delta: float) -> void:
 	_hit_flash = maxf(0.0, _hit_flash - delta * 7.5)
+	_control_lock_time = maxf(0.0, _control_lock_time - delta)
 	if _reset_timer > 0.0:
 		_reset_timer -= delta
 		scale = Vector2.ONE * clampf(_reset_timer / RESET_DELAY, 0.18, 1.0)
@@ -141,8 +212,8 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, 51.0, -2.7, -0.45, 24, Color("fff0a8"), 5.0, true)
 		draw_arc(Vector2.ZERO, 51.0, 0.45, 2.7, 24, Color("fff0a8"), 5.0, true)
 
-	_draw_bar(Vector2(-43.0, -63.0), 86.0, health / MAX_HEALTH, Color("e65b49"))
-	_draw_bar(Vector2(-43.0, -53.0), 86.0, resolve / MAX_RESOLVE, Color("54d4ce"))
+	_draw_bar(Vector2(-43.0, -63.0), 86.0, health / max_health, Color("e65b49"))
+	_draw_bar(Vector2(-43.0, -53.0), 86.0, resolve / max_resolve, Color("54d4ce"))
 
 
 func _draw_bar(at: Vector2, width: float, ratio: float, color: Color) -> void:
