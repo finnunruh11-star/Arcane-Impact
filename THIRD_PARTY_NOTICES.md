@@ -13,8 +13,10 @@ summary is stored at `docs/licenses/super-pixel-effects-gigapack.txt`.
 
 2D pixel art sprites - Anokolisa
 
-The selected enemy sprites may be used and modified in commercial,
-non-commercial, study, and other functional projects. The assets themselves
-may not be sold or marketed as a final product. Attribution is optional and is
-included here with appreciation. The supplied terms are stored at
+The selected enemy sprites and visual-effects frames may be used and modified
+in commercial, non-commercial, study, and other functional projects. The VFX
+frames used by Arcane Impact were concatenated into project-local horizontal
+atlases; the source pack is not redistributed. The assets themselves may not
+be sold or marketed as a final product. Attribution is optional and is included
+here with appreciation. The supplied terms are stored at
 `docs/licenses/pixel-crawler-free-pack.txt`.

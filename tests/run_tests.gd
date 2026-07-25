@@ -165,6 +165,9 @@ func _run() -> void:
 	_expect(all_roles_have_sprites, "every enemy role renders an imported animated mob sprite")
 	_expect(role_enemies[ReliquaryPursuer.Role.BULWARK].max_health > role_enemies[ReliquaryPursuer.Role.RAIDER].max_health * 2.0 and role_enemies[ReliquaryPursuer.Role.BULWARK].move_speed < role_enemies[ReliquaryPursuer.Role.RAIDER].move_speed, "Iron Bulwarks are visibly tanky and slow")
 	_expect(role_enemies[ReliquaryPursuer.Role.BLOODRUNNER].move_speed > role_enemies[ReliquaryPursuer.Role.RAIDER].move_speed, "Bloodrunners are the dedicated rushdown profile")
+	_expect(role_enemies[ReliquaryPursuer.Role.BLOODRUNNER].move_speed < role_enemies[ReliquaryPursuer.Role.RAIDER].move_speed * 1.25, "Bloodrunners pressure without moving dramatically faster than the horde")
+	_expect(ReliquaryPursuer.BLOODRUNNER_CHARGE_SPEED <= 430.0 and ReliquaryPursuer.BLOODRUNNER_CHARGE_DISTANCE <= 270.0, "Bloodrunner charges use the reduced speed and engagement distance")
+	_expect(float(role_enemies[ReliquaryPursuer.Role.RAIDER].call("_get_recovery_duration")) >= 1.6 and float(role_enemies[ReliquaryPursuer.Role.GRAVE_DEADEYE].call("_get_recovery_duration")) >= 2.4, "enemy attacks leave substantial recovery breathing room")
 	role_enemies[ReliquaryPursuer.Role.RAIDER].global_position = Vector2(900.0, 700.0)
 	role_enemies[ReliquaryPursuer.Role.BLOODRUNNER].global_position = Vector2(930.0, 700.0)
 	_expect(not (role_enemies[ReliquaryPursuer.Role.RAIDER].call("_get_horde_separation_direction") as Vector2).is_zero_approx(), "nearby horde members steer apart instead of drawing directly on top of each other")
@@ -262,8 +265,8 @@ func _run() -> void:
 		_expect(sniff_effect.hframes == int(sniff_effect_specs[effect_id]) and sniff_effect.vframes == 1, "%s slices into its authored frames" % effect_id)
 		sniff_effect.queue_free()
 	var fin_effect_specs := {
-		&"fin_cut": 5,
-		&"fin_shot": 5,
+		&"fin_cut": 6,
+		&"fin_shot": 6,
 		&"fin_shadow": 10,
 		&"fin_tool": 7,
 		&"fin_smoke": 31,
@@ -274,6 +277,21 @@ func _run() -> void:
 		var fin_effect = VfxCatalogScript.spawn_world(root, effect_id, Vector2.ZERO)
 		_expect(fin_effect.hframes == int(fin_effect_specs[effect_id]) and fin_effect.vframes == 1, "%s slices into its authored frames" % effect_id)
 		fin_effect.queue_free()
+	var new_effect_specs := {
+		&"kat_slash_1": 9,
+		&"kat_slash_2": 7,
+		&"kat_slash_3": 9,
+		&"fin_slash_1": 9,
+		&"fin_slash_2": 7,
+		&"fin_slash_3": 9,
+		&"nad_warlock_orb": 8,
+		&"nad_warlock_wave": 13,
+		&"nad_warlock_bloom": 8,
+	}
+	for effect_id: StringName in new_effect_specs:
+		var new_effect = VfxCatalogScript.spawn_world(root, effect_id, Vector2.ZERO)
+		_expect(new_effect.hframes == int(new_effect_specs[effect_id]) and new_effect.vframes == 1, "%s slices into the supplied Pixel Crawler frames" % effect_id)
+		new_effect.queue_free()
 	kat_world.queue_free()
 	await process_frame
 

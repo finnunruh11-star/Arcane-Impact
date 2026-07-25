@@ -123,8 +123,15 @@ func enemy_attack_impact(at: Vector2, direction: Vector2, packet: DamagePacket, 
 
 
 func play_effect(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float) -> void:
-	if effect_id == &"nad_probe":
-		play_mental_distortion(at, 72.0 * size_scale, 0.42, &"probe")
+	if effect_id in [&"nad_probe", &"nad_probe_orb", &"nad_probe_wave", &"nad_probe_corrupt"]:
+		var probe_kind := &"probe"
+		if effect_id == &"nad_probe_orb":
+			probe_kind = &"rift"
+		elif effect_id == &"nad_probe_wave":
+			probe_kind = &"void_web"
+		elif effect_id == &"nad_probe_corrupt":
+			probe_kind = &"eldritch_web"
+		play_mental_distortion(at, 72.0 * size_scale, 0.42, probe_kind)
 		return
 	var effect := VfxCatalog.spawn_world(self, effect_id, at, direction, size_scale)
 	match effect_id:
@@ -167,6 +174,7 @@ func play_mental_distortion(at: Vector2, radius: float, power: float, kind: Stri
 	var distortion := MentalDistortion.new()
 	distortion.configure(at, radius, power, kind)
 	add_child(distortion)
+	_play_nad_corruption_sheet(at, radius, power, kind)
 	if kind == &"conduit" or kind == &"cosmic_eye" or kind == &"abyssal_eye":
 		if is_instance_valid(_camera):
 			_camera.add_trauma(1.0)
@@ -178,6 +186,25 @@ func play_mental_distortion(at: Vector2, radius: float, power: float, kind: Stri
 			_camera.add_trauma(lerpf(0.18, 0.48, power))
 		_flash_strength = maxf(_flash_strength, lerpf(0.04, 0.13, power) * flash_scale)
 		_start_rumble(lerpf(0.22, 0.58, power))
+
+
+func _play_nad_corruption_sheet(at: Vector2, radius: float, power: float, kind: StringName) -> void:
+	var effect_id := StringName()
+	match kind:
+		&"rift", &"void_anchor":
+			effect_id = &"nad_warlock_orb"
+		&"void_prison", &"void_web", &"cosmic_eye":
+			effect_id = &"nad_warlock_wave"
+		&"eldritch_web", &"tentacle_breach", &"abyssal_eye":
+			effect_id = &"nad_warlock_bloom"
+	if effect_id.is_empty():
+		return
+	var phase := fposmod(at.x * 0.013 + at.y * 0.021, TAU)
+	var direction := Vector2.from_angle(phase)
+	var reference_radius := 210.0 if effect_id == &"nad_warlock_wave" else 150.0
+	var sheet_scale := clampf(radius / reference_radius, 0.48, 1.55) * lerpf(0.86, 1.08, power)
+	var effect := VfxCatalog.spawn_world(self, effect_id, at, direction, sheet_scale, Color(1.0, 1.0, 1.0, lerpf(0.46, 0.72, power)))
+	effect.z_index = 39
 
 
 func play_thunder_burst(at: Vector2, radius: float, power: float, ultimate: bool) -> void:

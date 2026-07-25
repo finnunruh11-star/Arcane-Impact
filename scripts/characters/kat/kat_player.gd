@@ -465,8 +465,12 @@ func _begin_primary_active() -> void:
 	var tier := get_survivor_basic_attack_tier()
 	var reach_scale := [1.0, 1.10, 1.20, 1.34, 1.50][tier - 1] as float
 	var width_scale := [1.0, 1.08, 1.18, 1.34, 1.54][tier - 1] as float
-	_set_attack_box(float(PRIMARY_REACH[_combo_stage]) * reach_scale, float(PRIMARY_HALF_WIDTH[_combo_stage]) * width_scale, aim_direction)
+	var attack_reach := float(PRIMARY_REACH[_combo_stage]) * reach_scale
+	_set_attack_box(attack_reach, float(PRIMARY_HALF_WIDTH[_combo_stage]) * width_scale, aim_direction)
 	_attack_area.monitoring = true
+	var slash_id := [&"kat_slash_1", &"kat_slash_2", &"kat_slash_3"][_combo_stage] as StringName
+	var slash_scale := (0.78 + 0.12 * float(_combo_stage)) * lerpf(0.88, 1.16, float(tier - 1) / 4.0)
+	effect_requested.emit(slash_id, global_position + aim_direction * attack_reach * 0.46, aim_direction, slash_scale)
 	_set_state(State.PRIMARY_ACTIVE)
 
 

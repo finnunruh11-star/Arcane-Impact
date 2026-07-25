@@ -521,7 +521,14 @@ func _resolve_foresee_candidates(candidates: Array[Node2D], tier: int) -> void:
 		if dealt > 0.0:
 			combat_impact.emit(target.global_position, direction, packet, 0.28 + 0.05 * float(focus_before) + 0.04 * float(clamped_tier - 1))
 			mind_link_requested.emit(global_position, target.global_position, 0.40 + 0.10 * float(clamped_tier))
-			effect_requested.emit(&"nad_probe", target.global_position, direction, 0.64 + 0.14 * float(clamped_tier))
+			var probe_effect := &"nad_probe"
+			if clamped_tier == 3:
+				probe_effect = &"nad_probe_orb"
+			elif clamped_tier == 4:
+				probe_effect = &"nad_probe_wave"
+			elif clamped_tier >= 5:
+				probe_effect = &"nad_probe_corrupt"
+			effect_requested.emit(probe_effect, target.global_position, direction, 0.64 + 0.14 * float(clamped_tier))
 	audio_requested.emit(&"nad_probe", 0.35 + 0.08 * float(strongest_focus) + 0.06 * float(clamped_tier - 1))
 
 

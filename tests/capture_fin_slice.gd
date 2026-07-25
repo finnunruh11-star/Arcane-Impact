@@ -28,6 +28,58 @@ func _capture() -> void:
 		enemy.process_mode = Node.PROCESS_MODE_DISABLED
 		enemy.apply_pierce_mark(index + 2, 12.0)
 
+	player.set_survivor_mode(true)
+	player.set_survivor_basic_attack_progress(5, 2.15)
+	for slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
+		player.set_survivor_ability_progress(slot, 20, 5, 3.28, 0.72)
+	player.select_form(FinPlayer.Form.NIGHTBLADE)
+	player.set("_state", FinPlayer.State.FREE)
+	player.aim_direction = Vector2.RIGHT
+	player.call("_begin_primary", 2)
+	player.call("_resolve_primary")
+	for _echo: int in 3:
+		player.call("_tick_primary_echoes", 1.0)
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	hud.announce("BASIC ATTACK / TIER 5")
+	for _frame: int in 12:
+		await process_frame
+	if not _save_capture("fin_primary_t5.png"):
+		quit(1)
+		return
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	(player.get("_attack_area") as Area2D).monitoring = false
+	player.set("_state", FinPlayer.State.FREE)
+	player.set_survivor_mode(false)
+	for child: Node in scene.get_node(^"CombatWorld").get_children():
+		if child is FinProjectile:
+			child.queue_free()
+	for _frame: int in 20:
+		await process_frame
+	var impact_target := enemies[0] as ReliquaryPursuer
+	impact_target.process_mode = Node.PROCESS_MODE_INHERIT
+	impact_target.set_physics_process(false)
+	player.select_form(FinPlayer.Form.ARBALEST)
+	player.set("_state", FinPlayer.State.FREE)
+	player.set("_crossbow_loaded", true)
+	player.aim_direction = Vector2.RIGHT
+	player.call("_begin_primary", 0)
+	player.call("_resolve_primary")
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	hud.announce("ARBALEST / IMPACT ATLAS")
+	for _frame: int in 19:
+		await physics_frame
+		await process_frame
+	if not _save_capture("fin_projectile_impact.png"):
+		quit(1)
+		return
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	player.set("_state", FinPlayer.State.FREE)
+	for child: Node in scene.get_node(^"CombatWorld").get_children():
+		if child is FinProjectile:
+			child.queue_free()
+	for _frame: int in 18:
+		await process_frame
+
 	player.select_form(FinPlayer.Form.NIGHTBLADE)
 	player.set("_state", FinPlayer.State.FREE)
 	player.call("_cast_umbral_veil")
@@ -79,24 +131,6 @@ func _capture() -> void:
 		await physics_frame
 		await process_frame
 	if not _save_capture("fin_artificer.png"):
-		quit(1)
-		return
-
-	player.set_survivor_mode(true)
-	player.set_survivor_basic_attack_progress(5, 2.15)
-	for slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
-		player.set_survivor_ability_progress(slot, 20, 5, 3.28, 0.72)
-	player.select_form(FinPlayer.Form.NIGHTBLADE)
-	player.set("_state", FinPlayer.State.FREE)
-	player.aim_direction = Vector2.RIGHT
-	player.call("_begin_primary", 0)
-	player.call("_resolve_primary")
-	for _echo: int in 3:
-		player.call("_tick_primary_echoes", 1.0)
-	hud.announce("BASIC ATTACK / TIER 5")
-	for _frame: int in 2:
-		await process_frame
-	if not _save_capture("fin_primary_t5.png"):
 		quit(1)
 		return
 

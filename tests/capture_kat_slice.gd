@@ -26,6 +26,26 @@ func _capture() -> void:
 		enemy.global_position = enemy_positions[index]
 		enemy.process_mode = Node.PROCESS_MODE_DISABLED
 
+	player.set_survivor_mode(true)
+	player.set_survivor_basic_attack_progress(5, 2.15)
+	player.set("_state", KatPlayer.State.FREE)
+	player.aim_direction = Vector2.RIGHT
+	player.call("_begin_primary", 2)
+	player.call("_begin_primary_active")
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	(scene.get_node(^"KatCombatHud") as KatCombatHud).announce("BASIC ATTACK / TIER 5")
+	for _frame: int in 12:
+		await process_frame
+	if not _save_capture("kat_primary_t5.png"):
+		quit(1)
+		return
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	(player.get("_attack_area") as Area2D).monitoring = false
+	player.set("_state", KatPlayer.State.FREE)
+	player.set_survivor_mode(false)
+	for _frame: int in 18:
+		await process_frame
+
 	Input.action_press(&"signature")
 	player.call("_begin_guard")
 	for _frame: int in 10:
@@ -61,22 +81,6 @@ func _capture() -> void:
 		await physics_frame
 		await process_frame
 	if not _save_capture("kat_communion.png"):
-		quit(1)
-		return
-
-	player.set_survivor_mode(true)
-	player.set_survivor_basic_attack_progress(5, 2.15)
-	for slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
-		player.set_survivor_ability_progress(slot, 20, 5, 3.28, 0.72)
-	player.set("_state", KatPlayer.State.FREE)
-	player.aim_direction = Vector2.RIGHT
-	player.call("_begin_primary", 2)
-	player.call("_begin_primary_active")
-	player.call("_apply_primary_hits")
-	(scene.get_node(^"KatCombatHud") as KatCombatHud).announce("BASIC ATTACK / TIER 5")
-	for _frame: int in 2:
-		await process_frame
-	if not _save_capture("kat_primary_t5.png"):
 		quit(1)
 		return
 

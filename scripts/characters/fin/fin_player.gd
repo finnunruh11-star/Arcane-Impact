@@ -669,10 +669,14 @@ func _begin_primary(stage: int) -> void:
 func _resolve_primary() -> void:
 	match _active_action:
 		&"dagger_primary":
-			_set_attack_rectangle([92.0, 105.0, 138.0][_combo_stage] as float, [32.0, 37.0, 51.0][_combo_stage] as float, aim_direction)
+			var attack_reach := [92.0, 105.0, 138.0][_combo_stage] as float
+			_set_attack_rectangle(attack_reach, [32.0, 37.0, 51.0][_combo_stage] as float, aim_direction)
 			_attack_resolved = false
 			_attack_area.monitoring = true
 			_state_time = [0.055, 0.065, 0.085][_combo_stage] as float
+			var slash_id := [&"fin_slash_1", &"fin_slash_2", &"fin_slash_3"][_combo_stage] as StringName
+			var slash_scale := (0.72 + 0.10 * float(_combo_stage)) * lerpf(0.90, 1.12, float(get_survivor_basic_attack_tier() - 1) / 4.0)
+			effect_requested.emit(slash_id, global_position + aim_direction * attack_reach * 0.48, aim_direction, slash_scale)
 			_set_state(State.PRIMARY_ACTIVE)
 		&"crossbow_primary":
 			_spawn_projectile(FinProjectile.Kind.CROSSBOW_BOLT, aim_direction, 0.18)
@@ -872,7 +876,6 @@ func _resolve_dagger_hit(target: Node2D) -> void:
 		_veil_time = 0.0
 	if dealt > 0.0:
 		combat_impact.emit(target.global_position, direction, packet, 0.28 + float(_combo_stage) * 0.16 + (0.18 if backstab else 0.0))
-		effect_requested.emit(&"fin_cut", target.global_position, direction, 0.72 + float(_combo_stage) * 0.22)
 	stats_changed.emit()
 
 
@@ -1315,7 +1318,6 @@ func on_fin_projectile_hit(
 	if dealt > 0.0:
 		var intensity := clampf(packet.health_damage / 126.0 + float(consumed_marks) * 0.05, 0.18, 1.0)
 		combat_impact.emit(at, direction, packet, intensity)
-		effect_requested.emit(&"fin_shot" if kind != FinProjectile.Kind.ROD_BOLT else &"fin_tool", at, direction, 0.64 + intensity * 0.58)
 		if ability_slot == &"ability_2":
 			_replenish_tactical_supply_on_takedown(target)
 	stats_changed.emit()

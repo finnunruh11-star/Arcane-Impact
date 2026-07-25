@@ -12,6 +12,20 @@ const SNIFF_BLESSING: Texture2D = preload("res://assets/vfx/sniff/blessing_spark
 const SNIFF_ANNIHILATION: Texture2D = preload("res://assets/vfx/sniff/annihilation_light_yellow.png")
 const SNIFF_SURGE: Texture2D = preload("res://assets/vfx/sniff/surge_impact_yellow.png")
 const SNIFF_DASH: Texture2D = preload("res://assets/vfx/sniff/dash_burst_violet.png")
+const KAT_SLASHES: Array[Texture2D] = [
+	preload("res://assets/vfx/pixel_crawler/kat_slash_1.png"),
+	preload("res://assets/vfx/pixel_crawler/kat_slash_2.png"),
+	preload("res://assets/vfx/pixel_crawler/kat_slash_3.png"),
+]
+const FIN_SLASHES: Array[Texture2D] = [
+	preload("res://assets/vfx/pixel_crawler/fin_slash_1.png"),
+	preload("res://assets/vfx/pixel_crawler/fin_slash_2.png"),
+	preload("res://assets/vfx/pixel_crawler/fin_slash_3.png"),
+]
+const DIRECTIONAL_IMPACT: Texture2D = preload("res://assets/vfx/pixel_crawler/directional_impact.png")
+const WARLOCK_BLOOM: Texture2D = preload("res://assets/vfx/pixel_crawler/warlock_bloom.png")
+const WARLOCK_WAVE: Texture2D = preload("res://assets/vfx/pixel_crawler/warlock_wave.png")
+const WARLOCK_ORB: Texture2D = preload("res://assets/vfx/pixel_crawler/warlock_orb.png")
 
 
 static func spawn_world(
@@ -76,8 +90,20 @@ static func _build(effect_id: StringName, loop: bool) -> PixelSheetEffect:
 			effect.configure(SNIFF_SURGE, Vector2i(96, 96), 15.0, loop)
 		&"sniff_dash":
 			effect.configure(SNIFF_DASH, Vector2i(96, 96), 15.0, loop)
+		&"kat_slash_1":
+			effect.configure(KAT_SLASHES[0], Vector2i(128, 128), 20.0, loop)
+		&"kat_slash_2":
+			effect.configure(KAT_SLASHES[1], Vector2i(128, 128), 20.0, loop)
+		&"kat_slash_3":
+			effect.configure(KAT_SLASHES[2], Vector2i(128, 128), 20.0, loop)
+		&"fin_slash_1":
+			effect.configure(FIN_SLASHES[0], Vector2i(128, 128), 22.0, loop)
+		&"fin_slash_2":
+			effect.configure(FIN_SLASHES[1], Vector2i(128, 128), 22.0, loop)
+		&"fin_slash_3":
+			effect.configure(FIN_SLASHES[2], Vector2i(128, 128), 22.0, loop)
 		&"fin_cut", &"fin_shot":
-			effect.configure(KAT_IMPACT, Vector2i(80, 80), 15.0, loop)
+			effect.configure(DIRECTIONAL_IMPACT, Vector2i(128, 64), 20.0, loop)
 		&"fin_shadow", &"fin_step":
 			effect.configure(SNIFF_DASH, Vector2i(96, 96), 15.0, loop)
 		&"fin_tool":
@@ -86,12 +112,22 @@ static func _build(effect_id: StringName, loop: bool) -> PixelSheetEffect:
 			effect.configure(KAT_ABSORB, Vector2i(128, 128), 15.0, loop)
 		&"fin_switch":
 			effect.configure(SNIFF_BLESSING, Vector2i(64, 64), 15.0, loop)
+		&"nad_warlock_orb":
+			effect.configure(WARLOCK_ORB, Vector2i(128, 128), 15.0, loop)
+		&"nad_warlock_wave":
+			effect.configure(WARLOCK_WAVE, Vector2i(192, 128), 18.0, loop)
+		&"nad_warlock_bloom":
+			effect.configure(WARLOCK_BLOOM, Vector2i(128, 128), 15.0, loop)
 		_:
 			push_error("Unknown VFX catalog entry: %s" % effect_id)
 	return effect
 
 
 static func _rotation_for(effect_id: StringName, direction: Vector2) -> float:
-	if effect_id in [&"kat_impact", &"fin_cut", &"fin_shot"] and not direction.is_zero_approx():
+	if effect_id == &"kat_impact" and not direction.is_zero_approx():
 		return direction.angle() + PI * 0.5
+	if effect_id in [&"fin_cut", &"fin_shot"] and not direction.is_zero_approx():
+		return direction.angle() + PI
+	if effect_id in [&"kat_slash_1", &"kat_slash_2", &"kat_slash_3", &"fin_slash_1", &"fin_slash_2", &"fin_slash_3", &"nad_warlock_wave"] and not direction.is_zero_approx():
+		return direction.angle()
 	return 0.0

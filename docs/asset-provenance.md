@@ -16,6 +16,10 @@ pack is never redistributed wholesale.
 | `assets/enemies/skeleton_mage_idle.png`, `skeleton_mage_run.png` | Pixel Crawler - Free Pack, Anokolisa | Same as above | Renamed only; runtime atlas slicing |
 | `assets/enemies/orc_shaman_idle.png`, `orc_shaman_run.png` | Pixel Crawler - Free Pack, Anokolisa | Same as above | Renamed only; runtime atlas slicing |
 | `assets/enemies/skeleton_rogue_idle.png`, `skeleton_rogue_run.png` | Pixel Crawler - Free Pack, Anokolisa | Same as above | Renamed only; runtime atlas slicing |
+| `assets/vfx/pixel_crawler/kat_slash_1.png`, `kat_slash_2.png`, `kat_slash_3.png` | Pixel Crawler - Free Pack, Anokolisa | Same as above | Selected `color2` slash frames concatenated into horizontal runtime atlases |
+| `assets/vfx/pixel_crawler/fin_slash_1.png`, `fin_slash_2.png`, `fin_slash_3.png` | Pixel Crawler - Free Pack, Anokolisa | Same as above | Selected `color5` slash frames concatenated into horizontal runtime atlases |
+| `assets/vfx/pixel_crawler/directional_impact.png` | Pixel Crawler - Free Pack, Anokolisa | Same as above | Selected colored VFX5 impact frames concatenated into a horizontal runtime atlas |
+| `assets/vfx/pixel_crawler/warlock_bloom.png`, `warlock_wave.png`, `warlock_orb.png` | Pixel Crawler - Free Pack, Anokolisa | Same as above | Selected Warlock VFX1-VFX3 frames concatenated into horizontal runtime atlases |
 | `assets/vfx/kat/absorb_violet.png` | Super Pixel Effects Gigapack v2.6.0, Will Tice / unTied Games | Bundling and commercial use permitted with attribution; see `docs/licenses/super-pixel-effects-gigapack.txt` | Renamed only |
 | `assets/vfx/kat/heal_red.png` | Super Pixel Effects Gigapack v2.6.0, Will Tice / unTied Games | Same as above | Renamed only |
 | `assets/vfx/kat/curse_death_red.png` | Super Pixel Effects Gigapack v2.6.0, Will Tice / unTied Games | Same as above | Renamed only |
