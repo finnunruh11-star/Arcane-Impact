@@ -17,6 +17,7 @@ func _capture() -> void:
 	for _frame: int in 8:
 		await process_frame
 	training.call(&"set_training_level", 20)
+	training.call(&"apply_training_stat", &"mana", 5)
 	for _frame: int in 6:
 		await process_frame
 	var destination := "user://training_mode.png"

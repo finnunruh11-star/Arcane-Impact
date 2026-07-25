@@ -29,6 +29,12 @@ func _run() -> void:
 		_expect(scene.call(&"get_training_level") == 20, "training level reaches 20")
 		for slot: StringName in SurvivorProgression.ABILITY_SLOTS:
 			_expect(bool(player.call(&"is_survivor_ability_unlocked", slot)), "level cheat unlocks %s for hero %d" % [slot, hero_index])
+		var mana_before := float(player.call(&"get_max_mana"))
+		scene.call(&"apply_training_stat", &"mana", 5)
+		_expect(scene.call(&"get_training_stat_rank", &"mana") == 5, "training applies five Mana upgrades for hero %d" % hero_index)
+		_expect(float(player.call(&"get_max_mana")) > mana_before, "Mana upgrades increase capacity for hero %d" % hero_index)
+		scene.call(&"set_training_level", 10)
+		_expect(scene.call(&"get_training_stat_rank", &"mana") == 5, "stat upgrades persist across level changes for hero %d" % hero_index)
 		var dummy := dummies[0] as TargetDummy
 		dummy.health = 1.0
 		dummy.apply_curse(2, 5.0)

@@ -3,10 +3,17 @@ extends CanvasLayer
 
 
 signal level_requested(level: int)
+signal stat_requested(stat: StringName, amount: int)
 signal reset_requested
 signal roster_requested
 
+const STATS: Array[StringName] = [&"strength", &"dexterity", &"intelligence", &"mana", &"vitality", &"luck"]
+const STAT_LABELS := ["STR", "DEX", "INT", "MANA", "VIT", "LUCK"]
+
 var _level_label: Label
+var _stat_buttons: Dictionary = {}
+var _pick_amount_button: Button
+var _pick_amount := 1
 var _font: SystemFont
 var _accent := Color("62d9cf")
 
@@ -29,7 +36,7 @@ func _ready() -> void:
 
 	var panel := Panel.new()
 	panel.position = Vector2(800.0, 22.0)
-	panel.size = Vector2(452.0, 102.0)
+	panel.size = Vector2(452.0, 194.0)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.018, 0.032, 0.040, 0.96)
@@ -64,11 +71,36 @@ func _ready() -> void:
 	raise.pressed.connect(func() -> void: level_requested.emit(-2))
 	panel.add_child(raise)
 	panel.add_child(_make_label("PAGE UP / DOWN", Vector2(350.0, 56.0), Vector2(88.0, 34.0), 9, Color("8aa6a7"), HORIZONTAL_ALIGNMENT_CENTER))
+	panel.add_child(_make_label("STAT UPGRADES", Vector2(14.0, 100.0), Vector2(112.0, 30.0), 11, _accent))
+	_pick_amount_button = _make_button(Vector2(342.0, 100.0), Vector2(96.0, 30.0), "PICK +1")
+	_pick_amount_button.pressed.connect(_toggle_pick_amount)
+	panel.add_child(_pick_amount_button)
+	for index: int in STATS.size():
+		var stat := STATS[index]
+		var column := index % 3
+		var row := index / 3
+		var button := _make_button(Vector2(14.0 + float(column) * 144.0, 136.0 + float(row) * 26.0), Vector2(136.0, 24.0), "%s  0" % STAT_LABELS[index])
+		button.pressed.connect(func() -> void: stat_requested.emit(stat, _pick_amount))
+		panel.add_child(button)
+		_stat_buttons[stat] = button
 
 
 func set_level(level: int) -> void:
 	if is_instance_valid(_level_label):
 		_level_label.text = "LEVEL %d" % level
+
+
+func set_stat_rank(stat: StringName, rank: int) -> void:
+	var button := _stat_buttons.get(stat) as Button
+	if not is_instance_valid(button):
+		return
+	var index := STATS.find(stat)
+	button.text = "%s  %d" % [STAT_LABELS[index], rank]
+
+
+func _toggle_pick_amount() -> void:
+	_pick_amount = 5 if _pick_amount == 1 else 1
+	_pick_amount_button.text = "PICK +%d" % _pick_amount
 
 
 func _make_label(text: String, at: Vector2, label_size: Vector2, font_size: int, color: Color, alignment := HORIZONTAL_ALIGNMENT_LEFT) -> Label:

@@ -5,6 +5,7 @@ extends Node2D
 const ProgressionScript := preload("res://scripts/survivors/survivor_progression.gd")
 const TrainingHudScript := preload("res://scripts/ui/training_hud.gd")
 const TRAINING_HERO_SETTING := "arcane_impact/training_hero_index"
+const TRAINING_STATS: Array[StringName] = [&"strength", &"dexterity", &"intelligence", &"mana", &"vitality", &"luck"]
 const HERO_SCRIPTS := [
 	preload("res://scripts/characters/kat/kat_player.gd"),
 	preload("res://scripts/characters/sniff/sniff_player.gd"),
@@ -21,7 +22,7 @@ const HERO_NAMES := ["Kat", "Sniff", "Nad", "Fin"]
 const HERO_ACCENTS := [Color("cf5268"), Color("42d7ed"), Color("78d6a6"), Color("dfbd58")]
 const DUMMY_POSITIONS := [
 	Vector2(720.0, 360.0),
-	Vector2(900.0, 205.0),
+	Vector2(650.0, 180.0),
 	Vector2(900.0, 515.0),
 	Vector2(1080.0, 290.0),
 	Vector2(1080.0, 430.0),
@@ -88,6 +89,10 @@ func get_training_level() -> int:
 	return _level
 
 
+func get_training_stat_rank(stat: StringName) -> int:
+	return int(_player.call(&"get_survivor_stat_rank", stat))
+
+
 func set_training_level(level: int) -> void:
 	_level = clampi(level, 1, 20)
 	_progression.configure(hero_index)
@@ -99,6 +104,13 @@ func set_training_level(level: int) -> void:
 		_player.call(&"set_survivor_ability_progress", slot, _progression.get_rank(slot), _progression.get_ability_tier(slot), _progression.get_ability_power_multiplier(slot), _progression.get_ability_cooldown_multiplier(slot))
 	_hero_hud.call(&"set_survivor_encounter", _level, _dummies.size())
 	_training_hud.set_level(_level)
+
+
+func apply_training_stat(stat: StringName, amount := 1) -> void:
+	if not stat in TRAINING_STATS or amount <= 0:
+		return
+	_player.call(&"apply_survivor_stat", stat, amount)
+	_training_hud.set_stat_rank(stat, get_training_stat_rank(stat))
 
 
 func reset_dummies() -> void:
@@ -179,6 +191,7 @@ func _build_huds() -> void:
 	_training_hud = TrainingHudScript.new() as CanvasLayer
 	_training_hud.configure(HERO_NAMES[hero_index], HERO_ACCENTS[hero_index])
 	_training_hud.level_requested.connect(_on_level_requested)
+	_training_hud.stat_requested.connect(apply_training_stat)
 	_training_hud.reset_requested.connect(reset_dummies)
 	_training_hud.roster_requested.connect(_return_to_roster)
 	add_child(_training_hud)

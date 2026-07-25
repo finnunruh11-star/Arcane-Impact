@@ -32,8 +32,12 @@ targeting interactions as live enemies, then reset automatically after defeat.
 The top-right panel can set level 1, 5, 10, 15, or 20 instantly. The + and -
 buttons, or Page Up and Page Down, adjust one level at a time. Changing level
 sets the basic attack and all five active abilities to that rank and tier, so
-the complete kit is available immediately. Press F or `RESET` to restore every
-dummy, and Escape or `ROSTER` to leave training.
+the complete kit is available immediately. The six stat buttons apply the same
+Strength, Dexterity, Intelligence, Mana, Vitality, and Luck upgrades offered in
+a run. Toggle `PICK +1` to `PICK +5` for bulk testing; Mana picks immediately
+increase both capacity and available Mana, and stat ranks persist across level
+changes. Press F or `RESET` to restore every dummy, and Escape or `ROSTER` to
+leave training.
 
 ## Goal and encounter flow
 

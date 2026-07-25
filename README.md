@@ -90,12 +90,16 @@ All four slices include:
 
 Training uses the selected hero's real combat kit against five self-resetting
 dummies. Level presets immediately set the basic attack and every active
-ability to the matching rank and behavior tier.
+ability to the matching rank and behavior tier. The stat panel applies real
+Strength, Dexterity, Intelligence, Mana, Vitality, and Luck upgrades in +1 or
++5 increments; these ranks persist while changing training level.
 
 | Action | Keyboard and mouse |
 | --- | --- |
 | Set level | Click 1, 5, 10, 15, or 20 |
 | Adjust one level | Page Up / Page Down or click + / - |
+| Choose stat pick size | Click `PICK +1` / `PICK +5` |
+| Add stat upgrades | Click STR, DEX, INT, MANA, VIT, or LUCK |
 | Reset all dummies | F or click `RESET` |
 | Return to roster | Escape or click `ROSTER` |
 
