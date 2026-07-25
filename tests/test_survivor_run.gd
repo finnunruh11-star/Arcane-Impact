@@ -21,8 +21,10 @@ func _init() -> void:
 
 func _run() -> void:
 	_check_progression_model()
+	_check_adaptive_spawn_pacing()
 	_check_arena_layout()
 	await _check_tier_behavior_contracts()
+	await _check_primary_evolution_contracts()
 	for hero_index: int in HERO_SCENES.size():
 		if not await _check_hero_run(hero_index):
 			_break_with_cleanup()
@@ -45,6 +47,24 @@ func _check_arena_layout() -> void:
 	for structure: Rect2 in ArenaBackdrop.STRUCTURE_RECTS:
 		all_structures_inside = all_structures_inside and ArenaBackdrop.PLAYABLE_RECT.encloses(structure)
 	_expect(all_structures_inside and ArenaBackdrop.is_position_clear(Vector2(640.0, 360.0), 48.0), "structures stay inside the arena and leave the player spawn clear")
+
+
+func _check_adaptive_spawn_pacing() -> void:
+	var pacing := SurvivorRun.new()
+	pacing.set("_run_time", 60.0)
+	var no_kills: Array[float] = []
+	pacing.set("_recent_kill_times", no_kills)
+	var low_target := pacing.get_spawn_target_count()
+	var low_interval := pacing.get_spawn_interval()
+	var fast_kills: Array[float] = []
+	for kill_index: int in 30:
+		fast_kills.append(30.0 + float(kill_index))
+	pacing.set("_recent_kill_times", fast_kills)
+	var high_target := pacing.get_spawn_target_count()
+	var high_interval := pacing.get_spawn_interval()
+	_expect(low_target == SurvivorRun.MIN_ENEMY_TARGET and high_target > low_target, "horde cap grows from recent kill throughput instead of elapsed run time")
+	_expect(low_interval > high_interval and high_target <= SurvivorRun.MAX_ENEMIES, "faster clearing earns faster refills without exceeding the reduced hard cap")
+	pacing.free()
 
 
 func _check_progression_model() -> void:
@@ -90,7 +110,8 @@ func _check_progression_model() -> void:
 	_expect(is_equal_approx(stats.get_move_speed_multiplier(), 1.03), "Dexterity slightly increases movement speed")
 	_expect(is_equal_approx(stats.get_scaling_multiplier(&"intelligence"), 1.12), "Intelligence scales spell damage")
 	_expect(is_equal_approx(stats.get_mana_multiplier(), 1.15) and is_equal_approx(stats.get_mana_regen_multiplier(), 1.12), "Mana increases capacity and regeneration")
-	_expect(is_equal_approx(stats.get_health_multiplier(), 1.10) and is_equal_approx(stats.get_health_regen(), 1.0), "Vitality increases health and health regeneration")
+	_expect(is_equal_approx(StatStateScript.new().get_health_regen(), 1.5), "every hero starts with useful health regeneration before taking Vitality")
+	_expect(is_equal_approx(stats.get_health_multiplier(), 1.10) and is_equal_approx(stats.get_health_regen(), 2.5), "Vitality increases health and adds to base health regeneration")
 	_expect(is_equal_approx(stats.get_critical_chance(), 0.04) and is_equal_approx(stats.get_critical_damage(), 1.60), "Luck increases critical chance and critical damage")
 	var complete_tier_catalog := true
 	var current_kits_are_tier_three := true
@@ -108,14 +129,20 @@ func _check_progression_model() -> void:
 		var late_horror := (String(tiers[3]) + " " + String(tiers[4])).to_lower()
 		nad_horror_escalates = nad_horror_escalates and (late_horror.contains("void") or late_horror.contains("tentacle") or late_horror.contains("tendril") or late_horror.contains("eye") or late_horror.contains("abyss") or late_horror.contains("rift") or late_horror.contains("eldritch") or late_horror.contains("maw"))
 	_expect(nad_horror_escalates, "every Nad ability becomes explicitly more eldritch at late tiers")
-	_expect(progression.get_rank(&"signature") == 0 and not progression.is_unlocked(&"signature"), "active abilities start locked")
+	_expect(progression.get_rank(&"signature") == 0 and not progression.is_unlocked(&"signature"), "offensive active abilities start locked")
+	_expect(progression.get_rank(&"evade") == 1 and progression.is_unlocked(&"evade"), "every hero starts with its escape ability at rank one")
 	var first_pick: Dictionary = progression.apply_pick(&"signature")
-	_expect(first_pick[&"rank"] == 1 and progression.is_unlocked(&"signature"), "first ability pick unlocks rank one")
+	_expect(first_pick[&"rank"] == 1 and first_pick[&"tier"] == 1 and progression.is_unlocked(&"signature"), "first ability pick unlocks rank one at tier one")
 	var second_pick: Dictionary = progression.apply_pick(&"signature")
 	_expect(second_pick[&"rank"] == 2 and progression.get_ability_power_multiplier(&"signature") > 0.58, "repeat ability picks improve its rank and power")
+	progression.apply_pick(&"ability_1")
+	progression.apply_pick(&"signature", 3)
+	_expect(progression.get_ability_tier(&"signature") == 2 and progression.get_ability_tier(&"ability_1") == 1, "a skill evolves at rank five without upgrading its rank-one neighbors")
 	for milestone: Array in [[1, 1], [5, 2], [10, 3], [15, 4], [20, 5]]:
 		progression.set_run_level(int(milestone[0]))
-		_expect(progression.get_tier() == int(milestone[1]), "run level %d selects ability tier %d" % milestone)
+		_expect(progression.get_tier() == int(milestone[1]), "run level %d selects basic-attack tier %d" % milestone)
+	_expect(is_equal_approx(progression.get_basic_attack_power_multiplier(), 2.15), "basic attacks gain a large independent power evolution by level twenty")
+	_expect(progression.get_ability_tier(&"signature") == 2 and progression.get_ability_tier(&"ability_1") == 1, "run levels do not upgrade active abilities")
 	var sniff_options: Array[Dictionary] = progression.roll_options(rng, 11)
 	var found_thunder_dash := false
 	for option: Dictionary in sniff_options:
@@ -213,6 +240,69 @@ func _check_tier_behavior_contracts() -> void:
 	await process_frame
 
 
+func _check_primary_evolution_contracts() -> void:
+	var kat := KatPlayer.new()
+	root.add_child(kat)
+	await process_frame
+	kat.set_survivor_mode(true)
+	kat.set_survivor_basic_attack_progress(4, 1.75)
+	var wave_target := ReliquaryPursuer.new()
+	wave_target.configure(kat, 0)
+	root.add_child(wave_target)
+	await process_frame
+	wave_target.process_mode = Node.PROCESS_MODE_DISABLED
+	wave_target.global_position = kat.global_position + Vector2(220.0, 0.0)
+	kat.aim_direction = Vector2.RIGHT
+	var wave_health_before: float = wave_target.health
+	kat.call("_resolve_primary_finisher_wave", 4)
+	_expect(wave_target.health < wave_health_before, "level-fifteen Kat basic finisher evolves into a ranged shockwave")
+	wave_target.queue_free()
+	kat.queue_free()
+	await process_frame
+
+	var nad := NadPlayer.new()
+	root.add_child(nad)
+	await process_frame
+	nad.set_survivor_mode(true)
+	nad.set_survivor_basic_attack_progress(3, 1.45)
+	nad.global_position = Vector2(300.0, 300.0)
+	nad.aim_direction = Vector2.RIGHT
+	var foresee_targets: Array[ReliquaryPursuer] = []
+	var target_offsets: Array[Vector2] = [Vector2(100.0, -12.0), Vector2(165.0, 12.0)]
+	for target_offset: Vector2 in target_offsets:
+		var target := ReliquaryPursuer.new()
+		target.configure(nad, 0)
+		root.add_child(target)
+		foresee_targets.append(target)
+	await process_frame
+	for target_index: int in foresee_targets.size():
+		var target := foresee_targets[target_index]
+		target.process_mode = Node.PROCESS_MODE_DISABLED
+		target.global_position = nad.global_position + target_offsets[target_index]
+	nad.process_mode = Node.PROCESS_MODE_DISABLED
+	nad.aim_direction = Vector2.RIGHT
+	var foresee_candidates: Array[Node2D] = []
+	for target: ReliquaryPursuer in foresee_targets:
+		foresee_candidates.append(target)
+	nad.call("_resolve_foresee_candidates", foresee_candidates, 3)
+	_expect(foresee_targets[0].get_mental_focus() > 0 and foresee_targets[1].get_mental_focus() > 0, "level-ten Foresee evolves from one target into a two-mind probe")
+	for target: ReliquaryPursuer in foresee_targets:
+		target.queue_free()
+	nad.queue_free()
+	await process_frame
+
+	var fin := FinPlayer.new()
+	root.add_child(fin)
+	await process_frame
+	fin.set_survivor_mode(true)
+	fin.set_survivor_basic_attack_progress(5, 2.15)
+	fin.call("_queue_primary_evolution_echoes")
+	var primary_echoes: Array = fin.get("_primary_echo_queue")
+	_expect(primary_echoes.size() == 3, "level-twenty Fin basic attacks invoke the other three forms")
+	fin.queue_free()
+	await process_frame
+
+
 func _check_hero_run(hero_index: int) -> bool:
 	var scene = HERO_SCENES[hero_index].instantiate()
 	scene.set(&"audio_enabled", false)
@@ -222,10 +312,12 @@ func _check_hero_run(hero_index: int) -> bool:
 	var player := scene.get_player() as Node2D
 	_expect(is_instance_valid(player) and player.name == HERO_NAMES[hero_index], "%s run creates the selected hero" % HERO_NAMES[hero_index])
 	_expect(scene.get_enemy_count() >= 5, "%s run starts under horde pressure" % HERO_NAMES[hero_index])
-	var active_slots_locked := true
+	var offensive_slots_locked := true
 	for slot: StringName in ProgressionScript.ABILITY_SLOTS:
-		active_slots_locked = active_slots_locked and not bool(player.call(&"is_survivor_ability_unlocked", slot))
-	_expect(active_slots_locked, "%s starts with only its manually triggered basic attack" % HERO_NAMES[hero_index])
+		if slot != &"evade":
+			offensive_slots_locked = offensive_slots_locked and not bool(player.call(&"is_survivor_ability_unlocked", slot))
+	_expect(offensive_slots_locked and bool(player.call(&"is_survivor_ability_unlocked", &"evade")), "%s starts with its basic attack and escape option" % HERO_NAMES[hero_index])
+	_expect(float(player.call(&"get_survivor_health_regen")) >= 1.5, "%s regenerates health without a Vitality pick" % HERO_NAMES[hero_index])
 
 	var targets: Array[ReliquaryPursuer] = []
 	for enemy_node: Node in get_nodes_in_group(&"enemies"):
@@ -291,6 +383,13 @@ func _check_level_up() -> void:
 	scene.choose_test_upgrade(&"signature")
 	_expect(not scene.is_level_up_active() and not paused, "choosing a boon resumes the run")
 	_expect(scene.get_upgrade_rank(&"signature") == 1 and bool(player.call(&"is_survivor_ability_unlocked", &"signature")), "first host ability pick unlocks rank one on the hero")
+	var scene_progression: SurvivorProgression = scene.get("_progression") as SurvivorProgression
+	scene_progression.apply_pick(&"signature", 3)
+	scene.call("_sync_ability_progression")
+	scene.grant_test_experience(10)
+	scene.choose_test_upgrade(&"signature", 1)
+	var hero_announcement := scene.get_node(^"KatCombatHud").get("_announcement") as Label
+	_expect(scene.get_upgrade_rank(&"signature") == 5 and hero_announcement.text.contains("EVOLVED / TIER 2"), "a skill crossing rank five announces its named evolution")
 	scene.queue_free()
 	for _frame: int in 8:
 		await process_frame
@@ -345,6 +444,24 @@ func _check_level_up() -> void:
 	intelligence_scene.call(&"_on_experience_collected", 10)
 	_expect(intelligence_scene.get_experience() == 11, "Intelligence slightly increases Arcane Essence gain")
 	intelligence_scene.queue_free()
+	for _frame: int in 8:
+		await process_frame
+
+	var basic_scene = HERO_SCENES[0].instantiate()
+	basic_scene.set(&"audio_enabled", false)
+	root.add_child(basic_scene)
+	for _frame: int in 8:
+		await process_frame
+	basic_scene.set("_level", 4)
+	basic_scene.set("_experience", 0)
+	basic_scene.set("_experience_required", 1)
+	var basic_progression: SurvivorProgression = basic_scene.get("_progression") as SurvivorProgression
+	basic_progression.set_run_level(4)
+	basic_scene.grant_test_experience(1)
+	basic_scene.choose_test_upgrade(&"strength", 1)
+	var basic_announcement := basic_scene.get_node(^"KatCombatHud").get("_announcement") as Label
+	_expect(basic_scene.get_run_level() == 5 and basic_announcement.text.contains("BASIC ATTACK EVOLVED / TIER 2"), "run level five visibly announces the independent basic-attack evolution")
+	basic_scene.queue_free()
 	for _frame: int in 8:
 		await process_frame
 

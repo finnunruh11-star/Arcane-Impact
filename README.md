@@ -8,10 +8,12 @@ arena-survival action roguelite. It shares no source code or assets with PVP_DIM
 The current playable build opens on a four-hero roster and sends the selected
 hero into a ten-minute run in the Shattered Reliquary. Enemies enter
 continuously from every edge, grow stronger over time, and drop Arcane Essence.
-Each hero starts with only their manually aimed basic attack. Collect enough Essence
-to pause the horde and choose one of six random upgrades: three stats and three
-hero abilities. The first ability pick unlocks rank 1; repeat picks improve its
-power and cooldown. Ability behavior advances at run levels 5, 10, 15, and 20.
+Each hero starts with their manually aimed basic attack and a rank-1 defensive
+escape. Collect enough Essence to pause the horde and choose one of six random
+upgrades: three stats and three hero abilities. The first pick of any other
+ability unlocks rank 1; repeat picks improve its power and cooldown. Each active
+ability evolves independently at ranks 5, 10, 15, and 20, while the basic attack
+evolves with run level at the same milestones.
 Every offered boon has a 15% chance to become a double upgrade, increased by
 Luck. Strength, Dexterity, and Intelligence scale their matching attacks while
 Mana, Vitality, and Luck improve resource, survival, and critical-hit systems.
@@ -37,9 +39,9 @@ Nad, the Eldritch Tactician, features:
 - Foresee probes that build Mental Focus and briefly lock one target;
 - charged remote Eldritch Mantle fields with collision-matched lockdown zones;
 - three persistent Terrain Anchors that slow enemies and collapse together;
-- Mental Cascade lock extension, Fold Space, and a prepared Arcane Conduit;
-- Mana restored by fresh locks, extensions, and prepared control cash-outs;
-- upgrades that escalate into void webs, tentacles, rifts, and abyssal eyes.
+- low direct damage, Mental Cascade lock extension, and a prepared Arcane Conduit;
+- low passive Mana recovery plus Arcane Recursion after successful Cascades;
+- Mantle tentacle executions and a rank-20, ten-second Eldritch Form capstone.
 
 Fin, the Shadow Artificer, features:
 
@@ -56,7 +58,9 @@ All four slices include:
 
 - manually aimed primary attacks and player-controlled active skills;
 - a scrolling 2560-by-1560 arena with solid reliquary ruins and camera follow;
-- three continuously spawning enemy profiles with readable collision-matched telegraphs;
+- six animated enemy roles spanning melee, tank, rushdown, ranged, and support;
+- a kill-rate-adaptive horde capped at 30 with local anti-overlap steering;
+- collision-matched slam, charge, projectile-lane, and support telegraphs;
 - Arcane Essence pickups, six-choice levels, ranked abilities, five behavior tiers,
     six stacking attributes, critical hits, double boons, a run timer, and kill count;
 - sprite-sheet VFX, layered synthesized SFX, hit-stop, camera trauma, flash,
@@ -84,27 +88,34 @@ All four slices include:
 | Collision debug | Tab | D-pad up |
 
 Primary attacks happen only when their input is pressed and use mouse or
-right-stick aim. Active inputs become available after that ability is selected
-from a level-up offer. Combat HUD slots show `LOCKED`, then the current tier
-and rank after unlocking.
+right-stick aim. Each hero's defensive escape is available immediately at rank
+1; other active inputs become available after that ability is selected from a
+level-up offer. Combat HUD slots show `LOCKED`, then the current tier and rank
+after unlocking.
 
 ### Run progression
 
-- **Ability tiers:** tier 1 at level 1, tier 2 at level 5, tier 3 at level 10,
-    tier 4 at level 15, and tier 5 at level 20.
-- **Ability ranks:** the first pick unlocks rank 1. Every repeat pick adds 12%
-    ability power and improves its cooldown independently of tier milestones.
+- **Active ability tiers:** each skill reaches tier 1 at rank 1, tier 2 at rank
+    5, tier 3 at rank 10, tier 4 at rank 15, and tier 5 at rank 20. Skills evolve
+    independently, and the defensive escape starts at rank 1.
+- **Basic attack tiers:** the primary reaches tiers 1-5 at run levels 1, 5, 10,
+    15, and 20. Its power multiplier rises to 1.00, 1.20, 1.45, 1.75, and 2.15,
+    with hero-specific range, speed, chaining, or echo mechanics.
+- **Ability ranks:** the first pick of a locked skill unlocks rank 1. Every repeat
+    pick adds 12% ability power, improves its cooldown, and advances that skill
+    toward its next evolution.
 - **Attack scaling:** swords and heavy weapons use Strength; bows and daggers
     use Dexterity; spells use Intelligence.
 - **Attributes:** Strength adds Strength damage and maximum Resolve; Dexterity
     adds Dexterity damage and movement speed; Intelligence adds spell damage
     and Essence gain; Mana adds capacity and regeneration; Vitality adds health
-    and health regeneration; Luck adds critical chance, critical damage, and
-    double-upgrade chance.
+    and health regeneration on top of every hero's base 1.5 health per second;
+    Luck adds critical chance, critical damage, and double-upgrade chance.
 - **Double boons:** every displayed option independently has a base 15% chance
     to grant two ranks. Each Luck rank adds 5 percentage points.
 - **Tier 3:** preserves the original full hero kits. Tiers 1-2 are deliberately
-    weaker versions; tiers 4-5 add new mechanics and stronger identity payoffs.
+    constrained versions; tiers 4-5 add new mechanics and stronger identity
+    payoffs to the specific skill or basic attack that reached the milestone.
 
 ### Kat
 
@@ -190,5 +201,5 @@ godot --path . --script res://tests/capture_survivor_progression.gd
 
 This prototype is not currently licensed for redistribution.
 
-Third-party visual effects are credited in `THIRD_PARTY_NOTICES.md` and
+Third-party enemy sprites and visual effects are credited in `THIRD_PARTY_NOTICES.md` and
 tracked individually in `docs/asset-provenance.md`.

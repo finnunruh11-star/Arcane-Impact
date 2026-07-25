@@ -8,6 +8,7 @@ const INTELLIGENCE := &"intelligence"
 const MANA := &"mana"
 const VITALITY := &"vitality"
 const LUCK := &"luck"
+const BASE_HEALTH_REGEN := 1.5
 
 var _ranks: Dictionary = {}
 
@@ -37,7 +38,7 @@ func get_health_multiplier() -> float:
 
 
 func get_health_regen() -> float:
-	return float(get_rank(VITALITY))
+	return BASE_HEALTH_REGEN + float(get_rank(VITALITY))
 
 
 func get_resolve_multiplier() -> float:

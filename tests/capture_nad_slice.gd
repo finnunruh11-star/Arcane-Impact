@@ -16,6 +16,7 @@ func _capture() -> void:
 
 	var player: NadPlayer = scene.get_node(^"CombatWorld/Nad")
 	var enemies: Array[Node] = get_nodes_in_group(&"enemies")
+	player.set_survivor_mode(false)
 	player.global_position = Vector2(455.0, 360.0)
 	player.aim_direction = Vector2.RIGHT
 	player.set("_using_gamepad", true)
@@ -26,7 +27,24 @@ func _capture() -> void:
 		enemy.process_mode = Node.PROCESS_MODE_DISABLED
 		enemy.apply_mental_focus(index + 2, 8.0)
 		enemy.apply_control_lock(5.0)
-	(scene.get_node(^"NadCombatHud") as NadCombatHud).announce("MENTAL FOCUS")
+	player.set_survivor_mode(true)
+	player.set_survivor_basic_attack_progress(5, 2.15)
+	for slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
+		player.set_survivor_ability_progress(slot, 20, 5, 3.28, 0.72)
+	var foresee_targets: Array[Node2D] = []
+	for enemy_node: Node in enemies:
+		if enemy_node is ReliquaryPursuer:
+			foresee_targets.append(enemy_node as Node2D)
+	player.call("_resolve_foresee_candidates", foresee_targets, 5)
+	(scene.get_node(^"NadCombatHud") as NadCombatHud).announce("BASIC ATTACK / TIER 5")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("nad_primary_t5.png"):
+		quit(1)
+		return
+	player.set_survivor_mode(false)
+	player.call("_activate_cascade_regeneration")
+	(scene.get_node(^"NadCombatHud") as NadCombatHud).announce("ARCANE RECURSION")
 	for _frame: int in 4:
 		await process_frame
 	if not _save_capture("nad_focus.png"):
@@ -74,6 +92,23 @@ func _capture() -> void:
 		await physics_frame
 		await process_frame
 	if not _save_capture("nad_conduit.png"):
+		quit(1)
+		return
+
+	player.set_survivor_mode(true)
+	player.set_survivor_basic_attack_progress(5, 2.15)
+	player.set_survivor_ability_progress(&"signature", 20, 5, 3.28, 0.72)
+	player.set_survivor_ability_progress(&"ability_1", 20, 5, 3.28, 0.72)
+	player.set_survivor_ability_progress(&"ability_2", 20, 5, 3.28, 0.72)
+	player.set_survivor_ability_progress(&"evade", 20, 5, 3.28, 0.72)
+	player.set_survivor_ability_progress(&"ultimate", 20, 5, 3.28, 0.72)
+	player.mana = player.get_max_mana()
+	player.ultimate_cooldown = 0.0
+	player.call("_begin_arcane_conduit")
+	for _frame: int in 6:
+		await physics_frame
+		await process_frame
+	if not _save_capture("nad_eldritch_form.png"):
 		quit(1)
 		return
 

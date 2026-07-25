@@ -110,6 +110,8 @@ var _dash_speed := 0.0
 var _invulnerable_time := 0.0
 var _signature_echo_queue: Array[int] = []
 var _signature_echo_timer := 0.0
+var _primary_echo_queue: Array[int] = []
+var _primary_echo_timer := 0.0
 var _queued_tool_form := -1
 var _umbral_speed_multiplier := UMBRAL_STEP_SPEED_MULTIPLIER
 var _umbral_origin := Vector2.ZERO
@@ -200,6 +202,14 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_basic_attack_progress(tier: int, power: float) -> void:
+	_survivor_abilities.set_basic_attack_progress(tier, power)
+
+
+func get_survivor_basic_attack_tier() -> int:
+	return _survivor_abilities.get_basic_attack_tier() if _survivor_mode else 3
+
+
 func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
 	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
 
@@ -217,6 +227,8 @@ func get_survivor_ability_tier(slot: StringName) -> int:
 
 
 func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	if slot == &"primary":
+		return _survivor_abilities.get_basic_attack_power() if _survivor_mode else 1.0
 	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
 
 
@@ -327,6 +339,7 @@ func _tick_timers(delta: float) -> void:
 	_tick_charge_resources(delta)
 	_traps = _traps.filter(func(trap: FinShadowTrap) -> bool: return is_instance_valid(trap))
 	_tick_signature_echoes(delta)
+	_tick_primary_echoes(delta)
 	_umbral_retrace_time = maxf(0.0, _umbral_retrace_time - delta)
 	if _umbral_retrace_time <= 0.0:
 		_umbral_retrace_available = false
@@ -649,6 +662,7 @@ func _begin_primary(stage: int) -> void:
 			_active_action = &"rod_primary"
 			_state_time = 0.085
 			audio_requested.emit(&"fin_rod", 0.24)
+	_state_time *= [1.0, 0.92, 0.84, 0.76, 0.68][get_survivor_basic_attack_tier() - 1] as float
 	_set_state(State.PRIMARY_STARTUP)
 
 
@@ -680,6 +694,31 @@ func _resolve_primary() -> void:
 			audio_requested.emit(&"fin_rod", 0.42)
 			_state_time = 0.19
 			_set_state(State.PRIMARY_RECOVERY)
+	_queue_primary_evolution_echoes()
+
+
+func _queue_primary_evolution_echoes() -> void:
+	var tier := get_survivor_basic_attack_tier()
+	_primary_echo_queue.clear()
+	if tier == 4 and _previous_form != _form:
+		_primary_echo_queue.append(_previous_form)
+	elif tier >= 5:
+		for form: int in Form.size():
+			if form != _form:
+				_primary_echo_queue.append(form)
+	_primary_echo_timer = 0.08
+
+
+func _tick_primary_echoes(delta: float) -> void:
+	if _primary_echo_queue.is_empty():
+		return
+	_primary_echo_timer -= delta
+	if _primary_echo_timer > 0.0:
+		return
+	var echo_form := int(_primary_echo_queue.pop_front())
+	_fire_form_basic(echo_form, &"primary")
+	effect_requested.emit(&"fin_switch", global_position, aim_direction, 0.62 + 0.12 * float(get_survivor_basic_attack_tier()))
+	_primary_echo_timer = 0.11
 
 
 func _begin_signature() -> void:
@@ -825,7 +864,10 @@ func _resolve_dagger_hit(target: Node2D) -> void:
 	var direction := (target.global_position - global_position).normalized()
 	var dealt := DamageResolver.apply_with_result(target, packet, direction)
 	if target.has_method(&"apply_pierce_mark"):
-		target.call(&"apply_pierce_mark", 2 if _combo_stage == 2 or backstab else 1, 8.0)
+		var mark_count := 2 if _combo_stage == 2 or backstab else 1
+		if get_survivor_basic_attack_tier() >= 3:
+			mark_count += 1
+		target.call(&"apply_pierce_mark", mark_count, 8.0)
 	if veil_strike:
 		_veil_time = 0.0
 	if dealt > 0.0:
@@ -1265,7 +1307,9 @@ func on_fin_projectile_hit(
 		packet.survivor_ability_slot = ability_slot
 	var dealt := DamageResolver.apply_with_result(target, packet, direction)
 	if mark_count > 0 and target.has_method(&"apply_pierce_mark"):
-		target.call(&"apply_pierce_mark", mark_count + (1 if ability_slot == &"ability_2" and get_survivor_ability_tier(&"ability_2") >= 4 else 0), 8.0)
+		var bonus_marks := 1 if packet.survivor_ability_slot == &"primary" and get_survivor_basic_attack_tier() >= 3 else 0
+		bonus_marks += 1 if ability_slot == &"ability_2" and get_survivor_ability_tier(&"ability_2") >= 4 else 0
+		target.call(&"apply_pierce_mark", mark_count + bonus_marks, 8.0)
 	if kind == FinProjectile.Kind.POWER_ARROW and charge >= 0.78 and target.has_method(&"apply_control_lock"):
 		target.call(&"apply_control_lock", 0.38 + charge * 0.28)
 	if dealt > 0.0:

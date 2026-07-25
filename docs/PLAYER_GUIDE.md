@@ -29,36 +29,75 @@ is a scrolling 2560-by-1560 battlefield with solid ruined structures. The camera
 follows the hero and clamps at the world edges. Enemies and heroes collide with
 the ruins; enemy pursuit steers around blocked approaches.
 
-Every hero starts with only their manually triggered basic attack. Aim with the
-mouse or right stick and press the attack input to fire or swing; idle heroes do
-not attack. Movement remains under direct control. Active skills become
-usable after they are selected during a level-up. Enemies enter continuously
-from all four arena edges; the active population, health, damage, and speed rise
-throughout the ritual. Enemy profiles rotate between:
+Every hero starts with their manually triggered basic attack and a rank-1
+defensive escape. Aim with the mouse or right stick and press the attack input
+to fire or swing; idle heroes do not attack. Movement remains under direct
+control. Other active skills become usable after they are selected during a
+level-up.
 
-- **Ashen Pursuer:** balanced speed, durability, and attack timing.
-- **Iron Penitent:** slow, durable, and hard-hitting, with the longest windup.
-- **Relic Stalker:** fast and fragile, with the shortest windup.
+Enemies enter continuously from clear positions along all four arena edges.
+The horde target starts at six and responds to the last 30 seconds of kills:
+clearing quickly accelerates reinforcements, while slower clearing allows the
+population to fall instead of forcing an unavoidable pileup. The target never
+exceeds 30. Nearby enemies also steer apart so several roles cannot occupy the
+same point or seal one approach as a single body. Enemy health, damage, and
+speed still rise gradually throughout the ritual. Enemy profiles rotate between:
 
-Red ground shapes show the exact area of an incoming enemy strike. Enemy health
-is the red bar above the enemy; cyan is Resolve. Defeated enemies drop green
-Arcane Essence shards. Move near a shard to draw it in. Filling the Essence bar
+- **Ashen Raider:** balanced melee pressure with a short rectangular swing.
+- **Iron Bulwark:** the slowest and toughest enemy; winds up a large circular
+  ground slam.
+- **Bloodrunner:** a fragile rushdown attacker that marks a long lane before
+  charging through it.
+- **Bone Arcanist:** keeps its distance and launches a slow homing blue orb.
+- **Warcaller:** a support enemy whose green pulse heals and empowers nearby
+  enemies instead of damaging the hero.
+- **Grave Deadeye:** a ranged skirmisher with a narrow purple aim line and a
+  fast straight projectile.
+
+Red and amber ground shapes show damaging melee, charge, and slam areas. Blue
+and purple lanes show incoming projectiles; the projectile itself remains
+visible after release. Green circles are beneficial enemy support and do not
+damage the hero. Enemy health is the red bar above the enemy; cyan is Resolve.
+Defeated enemies drop green Arcane Essence shards. Move near a shard to draw it
+in. Filling the Essence bar
 pauses combat and presents six unique choices: three random stats and three
 random abilities from the selected hero. Keyboard choices use 1 through 6.
 On controller, move focus with the D-pad or left stick and press Xbox A to
 confirm and select the focused boon.
 
-The first pick of an ability unlocks rank 1. Picking it again raises its rank,
-adding 12% power per repeat and improving its cooldown. Ability behavior uses
-the run's current milestone tier:
+Every hero's defensive escape begins at rank 1. The first pick of any other
+active ability unlocks its rank 1. Further picks add 12% power per rank, improve
+that skill's cooldown, and move only that skill toward its next behavior tier:
 
-| Run level | Ability tier | Role |
+| Skill rank | Active tier | Role |
 | --- | --- | --- |
 | 1-4 | Tier 1 | Small or limited opening version |
 | 5-9 | Tier 2 | Improved reach, duration, or utility |
-| 10-14 | Tier 3 | Original full-strength hero kit |
-| 15-19 | Tier 4 | New chaining, control, sustain, or form mechanics |
+| 10-14 | Tier 3 | Original full-strength skill |
+| 15-19 | Tier 4 | New chaining, control, sustain, or form mechanic |
 | 20+ | Tier 5 | Identity-defining capstone behavior |
+
+The basic attack is independent. Run level raises its damage and behavior tier
+even when the level-up boon is spent on a stat or active ability:
+
+| Run level | Basic tier | Power multiplier |
+| --- | --- | ---: |
+| 1-4 | Tier 1 | 1.00 |
+| 5-9 | Tier 2 | 1.20 |
+| 10-14 | Tier 3 | 1.45 |
+| 15-19 | Tier 4 | 1.75 |
+| 20+ | Tier 5 | 2.15 |
+
+Each hero's basic attack also changes mechanically:
+
+- **Kat:** swings become wider and recover faster; tier 4 adds a ranged combo
+  finisher wave, and tier 5 enlarges it and applies two Curse stacks.
+- **Sniff:** darts start and recover faster. Guaranteed secondary chains grow
+  from one at tier 2 to two, three, and five at tiers 3-5; tier-5 forks burst.
+- **Nad:** Foresee grows wider and longer and probes 1, 1, 2, 3, then 5 minds.
+  Tiers 4-5 apply two Focus at once.
+- **Fin:** every form attacks faster. Tier 4 echoes the previous form's basic;
+  tier 5 invokes the other three forms after every primary attack.
 
 The six repeatable attributes are:
 
@@ -67,6 +106,7 @@ The six repeatable attributes are:
 - **Intelligence:** adds 12% spell damage and 5% Arcane Essence gain.
 - **Mana:** adds 15% maximum Mana and 12% Mana regeneration.
 - **Vitality:** adds 10% maximum health and 1 health regeneration per second.
+  Every hero already regenerates 1.5 health per second before Vitality ranks.
 - **Luck:** adds 4% critical chance, 10% critical damage, and 5 percentage
   points to the double-upgrade chance.
 
@@ -80,10 +120,10 @@ A double boon grants two stat or ability ranks when selected. Luck raises this
 chance, and double ability picks can unlock rank 2 immediately.
 
 Upgrades stack for the duration of the run. Combat HUD slots show `LOCKED`
-before the first pick and `Tn Rm` afterward. The detailed ability values below
-describe tier 3, which intentionally preserves the original full hero kits.
-Lower tiers are constrained versions; tiers 4 and 5 apply the behavior written
-on their level-up cards.
+before the first pick and `Tn Rm` afterward; the escape starts at `T1 R1`.
+The detailed ability values below describe active tier 3, which intentionally
+preserves the original full hero skills. Lower tiers are constrained versions;
+tiers 4 and 5 apply the behavior written on that skill's level-up cards.
 
 Survive until 10:00 to complete the
 ritual. Defeat opens a summary with retry and roster actions. Escape or the
@@ -212,6 +252,11 @@ pulse and grants 2.4 Vitality for each enemy hit.
 
 Press the input again to remove the Halo even during cooldown. It has no fixed
 duration and shuts off automatically at zero Mana.
+
+Kat's current Mana regeneration offsets the combined raw drain before Mana is
+removed. The HUD reports this net balance. Choir is neutral at 16 regeneration
+per second, Halo at 22, and both can remain active indefinitely once total Mana
+regeneration reaches their combined 38 per second.
 
 ### Bastion March
 
@@ -360,8 +405,9 @@ targets with Arcane Conduit.
 
 - **Health:** 220 maximum.
 - **Resolve:** 160 maximum.
-- **Mana:** 0-100 and regenerates at 13 per second. The Mana attribute increases
-  both values. Every spell spends Mana, including Fold Space.
+- **Mana:** 0-100 with only 3 passive regeneration per second. The Mana
+  attribute increases capacity and regeneration. Every spell spends Mana,
+  including Fold Space.
 - **Mental Focus:** enemies can hold up to five stacks. Focus lasts until its
   current duration expires. A target under Eldritch Lock takes 12% more health
   damage per Focus stack, up to a 60% multiplier. Focus without an active Lock
@@ -369,14 +415,14 @@ targets with Arcane Conduit.
 - **Eldritch Lock:** cancels the target's current attack, freezes movement, and
   exposes its Focus vulnerability. Mental Cascade extends only an existing
   Lock; it does not create one on an uncontrolled target.
-- **Control refunds:** a fresh Foresee lock restores 5 Mana, fresh Mantle or
-  Conduit locks restore 4.5-5, existing locks restore smaller amounts, Anchor
-  hits restore 1.5, and Cascade lock extensions restore 3.
+- **Arcane Recursion:** a successful Mental Cascade grants 8 additional Mana
+  regeneration per second for 4 seconds. Foresee, Mantle, Anchors, and Conduit
+  do not directly refund Mana.
 
-Nad's visuals and mechanics become progressively more eldritch with each tier.
-Tier 3 preserves the original complete kit; tier 4 adds void prisons, webs,
-tethers, and cosmic eyes; tier 5 adds tentacle breaches, living walls, shared
-mental systems, hungry rifts, and an arena-wide abyssal eye.
+Nad's visuals and mechanics become progressively more eldritch as each skill's
+own rank raises its tier. Tier 3 preserves the original complete skill; tier 4
+adds void prisons, webs, tethers, and cosmic eyes; tier 5 adds tentacle breaches,
+living walls, shared mental systems, hungry rifts, and an abyssal transformation.
 
 ### Foresee
 
@@ -385,8 +431,8 @@ mental systems, hungry rifts, and an arena-wide abyssal eye.
 
 Projects a narrow 242-pixel collision probe. The nearest enemy in the probe
 gains one Mental Focus for 7 seconds and is locked for 0.24 seconds plus 0.05
-seconds per Focus stack it already held. Foresee deals 11 base health damage
-plus 1.5 per resulting Focus stack and 17 base Resolve damage plus 2 per stack.
+seconds per Focus stack it already held. Foresee deals 7 base health damage
+plus 1 per resulting Focus stack and 17 base Resolve damage plus 2 per stack.
 
 Use repeated Foresee hits to prepare one priority target while conserving Mana.
 Primary input pressed during another action is buffered for 0.12 seconds.
@@ -399,8 +445,13 @@ Primary input pressed during another action is buffered for 0.12 seconds.
 Charge for up to 1.05 seconds while moving slowly. The remote field grows from
 135 to 230 pixels in radius and moves from 185 to 265 pixels along Nad's aim.
 Releasing it gives every enemy inside two Focus for 8 seconds and locks them
-for 1.6 to 3.8 seconds based on charge. Health damage grows from 18 to 36;
+for 1.6 to 3.8 seconds based on charge. Health damage grows from 11 to 22;
 Resolve damage grows from 26 to 54.
+
+Every Mantle tier also summons execution tentacles after the field resolves.
+They kill enemies below 8%, 12%, 18%, 24%, or 32% maximum health at tiers 1-5.
+The execute reach grows with the field, and tier 5 pulls prey toward its abyssal
+eye before the tentacles check their health.
 
 The visible circle is the gameplay collision radius. Use Mantle to interrupt
 multiple windups or establish the long Lock window that Cascade can extend.
@@ -417,7 +468,7 @@ Anchor lasts 12 seconds and slows enemies inside it to 52% movement speed. Nad
 can maintain three. Once all three exist, the next Anchor command collapses
 the complete lattice instead of spending Mana on a fourth.
 
-Each collapsing field deals 26 health and 34 Resolve damage, applies one Focus
+Each collapsing field deals 15 health and 34 Resolve damage, applies one Focus
 for 7 seconds, and locks targets for 0.65 seconds. Overlapping fields each have
 their own authoritative circle, so deliberate overlap creates a stronger but
 more concentrated collapse.
@@ -429,9 +480,11 @@ more concentrated collapse.
 **Cooldown:** 6.5 seconds
 
 Projects a broad 324-pixel collision cone. Every target gains one Focus for 8
-seconds and takes 24 health damage plus 4 per Focus stack it held before the
+seconds and takes 14 health damage plus 2.5 per Focus stack it held before the
 hit. If a target was already locked, Cascade extends that Lock by 0.55 seconds
-plus 0.1 per previous Focus stack, up to 6 seconds remaining.
+plus 0.1 per previous Focus stack, up to 6 seconds remaining. Hitting at least
+one enemy starts Arcane Recursion: +8 Mana regeneration per second for 4 seconds
+on top of Nad's passive regeneration.
 
 Cast Cascade after Mantle or an Anchor collapse. Casting it first builds Focus
 and damage but deliberately provides no free lockdown.
@@ -445,7 +498,7 @@ and damage but deliberately provides no free lockdown.
 Phases 168 pixels in the movement direction, or aim direction when no movement
 input is held. Nad ignores damage for 0.22 seconds and passes through enemy
 bodies during the fold. Fold Space deals no damage; it is a positioning tool
-for lining up fields and escaping while control refunds rebuild Mana.
+for lining up fields while Arcane Recursion rebuilds Mana.
 
 ### Arcane Conduit
 
@@ -454,24 +507,34 @@ for lining up fields and escaping while control refunds rebuild Mana.
 **Cooldown:** 22 seconds
 
 After a 0.64-second cast, Conduit strikes every enemy within 600 pixels. Nad is
-invulnerable for 1.8 seconds from cast start. Unlocked targets take 34 base
+invulnerable for 1.8 seconds from cast start. Unlocked targets take 22 base
 health and 42 Resolve damage and receive a short 0.75-second Lock. Targets that
-were already locked take 64 base health and 74 Resolve damage instead, receive
-a longer Lock, and produce maximum impact feedback. Both versions add 8 health
+were already locked take 44 base health and 74 Resolve damage instead, receive
+a longer Lock, and produce maximum impact feedback. Both versions add 5 health
 damage and 5 Resolve damage per previous Focus stack, then add one Focus.
 
 The best Conduit is not an opener. Prepare several targets with Mantle,
 Anchors, and Cascade, then cash out before their Locks expire.
+
+At Arcane Conduit rank 20, tier 5 replaces the blast with **Eldritch Form**.
+Nad transforms for 10 seconds and the ultimate enters a 90-second cooldown.
+During the form, spells cost no Mana, incoming health and Resolve damage are
+reduced by 55%, and a 300-pixel pulse fires every 0.75 seconds. Each pulse adds
+Focus, briefly locks nearby enemies, deals damage, and executes targets below
+32% health with tentacles. The HUD replaces the cooldown text with the remaining
+form duration until Nad returns to normal.
 
 ### Nad combat loop
 
 1. Build Focus on priority enemies with Foresee.
 2. Place Anchors where enemies must chase or where their paths overlap.
 3. Charge Mantle into a group to interrupt attacks and establish a long Lock.
-4. Extend that Lock with Mental Cascade while adding another Focus stack.
+4. Land Mental Cascade to extend that Lock and trigger four seconds of Arcane
+  Recursion.
 5. Collapse three Anchors when enemies occupy their fields.
 6. Cast Arcane Conduit while several focused targets are still locked.
-7. Use Fold Space to reposition while Mana regenerates.
+7. Spend the Recursion window on another setup spell or Fold Space, then play
+  defensively during Nad's slow passive recovery.
 
 ## Fin: Shadow Artificer
 

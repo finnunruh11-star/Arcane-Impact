@@ -140,20 +140,31 @@ func _process(delta: float) -> void:
 	_update_slot(&"primary", 0.0, 1.0, "7 MANA")
 	_update_slot(&"mantle", 0.0, 1.0, "32 MANA")
 	_update_slot(&"anchor", _player.anchor_cooldown, 8.0, "COLLAPSE" if _player.get_anchor_count() == anchor_capacity else "%d/%d  18 MANA" % [_player.get_anchor_count(), anchor_capacity])
-	_update_slot(&"cascade", _player.cascade_cooldown, 6.5, "24 MANA")
+	_update_slot(&"cascade", _player.cascade_cooldown, 6.5, "24 MANA / REGEN")
 	_update_slot(&"fold", _player.fold_cooldown, 2.8, "14 MANA")
-	_update_slot(&"ultimate", _player.ultimate_cooldown, 22.0, "50 MANA")
+	var ultimate_maximum := NadPlayer.ELDRITCH_FORM_COOLDOWN if _player.get_survivor_ability_tier(&"ultimate") >= 5 else 22.0
+	_update_slot(&"ultimate", _player.ultimate_cooldown, ultimate_maximum, "50 MANA")
 	if _player.is_mantle_charging():
 		var data: Dictionary = _slot_data[&"mantle"]
 		var progress := data[&"progress"] as ProgressBar
 		var status := data[&"status"] as Label
 		progress.value = _player.get_mantle_charge_ratio() * 100.0
 		status.text = "%d%%" % int(round(_player.get_mantle_charge_ratio() * 100.0))
+	if _player.get_cascade_regen_remaining() > 0.0:
+		var cascade_data: Dictionary = _slot_data[&"cascade"]
+		(cascade_data[&"progress"] as ProgressBar).value = _player.get_cascade_regen_remaining() / NadPlayer.CASCADE_REGEN_DURATION * 100.0
+		(cascade_data[&"status"] as Label).text = "REGEN +%.0f/s  %.1fs" % [NadPlayer.CASCADE_MANA_REGEN, _player.get_cascade_regen_remaining()]
+		(cascade_data[&"status"] as Label).add_theme_color_override(&"font_color", Color("8cffe0"))
 	_apply_progression_status(&"mantle", &"signature")
 	_apply_progression_status(&"anchor", &"ability_1")
 	_apply_progression_status(&"cascade", &"ability_2")
 	_apply_progression_status(&"fold", &"evade")
 	_apply_progression_status(&"ultimate", &"ultimate")
+	if _player.is_eldritch_form_active():
+		var ultimate_data: Dictionary = _slot_data[&"ultimate"]
+		(ultimate_data[&"progress"] as ProgressBar).value = _player.get_eldritch_form_remaining() / NadPlayer.ELDRITCH_FORM_DURATION * 100.0
+		(ultimate_data[&"status"] as Label).text = "FORM  %.1fs" % _player.get_eldritch_form_remaining()
+		(ultimate_data[&"status"] as Label).add_theme_color_override(&"font_color", Color("d7ff92"))
 
 	if _using_gamepad != _player.is_using_gamepad():
 		_using_gamepad = _player.is_using_gamepad()

@@ -82,6 +82,24 @@ func _capture() -> void:
 		quit(1)
 		return
 
+	player.set_survivor_mode(true)
+	player.set_survivor_basic_attack_progress(5, 2.15)
+	for slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
+		player.set_survivor_ability_progress(slot, 20, 5, 3.28, 0.72)
+	player.select_form(FinPlayer.Form.NIGHTBLADE)
+	player.set("_state", FinPlayer.State.FREE)
+	player.aim_direction = Vector2.RIGHT
+	player.call("_begin_primary", 0)
+	player.call("_resolve_primary")
+	for _echo: int in 3:
+		player.call("_tick_primary_echoes", 1.0)
+	hud.announce("BASIC ATTACK / TIER 5")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("fin_primary_t5.png"):
+		quit(1)
+		return
+
 	Input.action_release(&"signature")
 	scene.queue_free()
 	for _frame: int in 10:

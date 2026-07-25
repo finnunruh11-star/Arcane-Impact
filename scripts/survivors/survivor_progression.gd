@@ -10,8 +10,10 @@ const ABILITY_SLOTS: Array[StringName] = [
 	&"ultimate",
 ]
 const TIER_LEVELS := [1, 5, 10, 15, 20]
+const TIER_RANKS := [1, 5, 10, 15, 20]
 const TIER_POWER := [0.58, 0.78, 1.0, 1.28, 1.62]
 const TIER_COOLDOWN := [1.32, 1.15, 1.0, 0.88, 0.74]
+const BASIC_ATTACK_POWER := [1.0, 1.20, 1.45, 1.75, 2.15]
 const STAT_CATALOG: Array[Dictionary] = [
 	{&"id": &"strength", &"title": "STRENGTH", &"description": "+12% Strength damage and +4% maximum Resolve"},
 	{&"id": &"dexterity", &"title": "DEXTERITY", &"description": "+10% Dexterity damage and +3% movement speed"},
@@ -36,11 +38,11 @@ static var HERO_ABILITIES: Array[Array] = [
 		_ability(&"ultimate", "DIVINE ANNIHILATION", ["Focused blast with no Crowned safety", "Wide blast and brief invulnerability", "Full Divine Annihilation", "Three rotating storm fronts continue after impact", "The storm repeatedly retargets and fills the arena with crossing arcs"]),
 	],
 	[
-		_ability(&"signature", "ELDRITCH MANTLE", ["A whispering pulse briefly stills one mind", "A thin void membrane widens the lock", "Full charged Eldritch Mantle tears open a stable rift", "Black tendrils tether locked minds inside a void prison", "A colossal abyssal eye opens and cancels every attack beneath its gaze"]),
+		_ability(&"signature", "ELDRITCH MANTLE", ["Instant Mantle; tentacles execute enemies below 8% health", "Charged membrane; tentacles execute below 12%", "Full stable rift; tentacles execute below 18%", "Void prison tethers minds and executes below 24%", "Abyssal eye pulls prey and executes everything below 32%"]),
 		_ability(&"ability_1", "TERRAIN ANCHOR", ["Plant one alien sigil and rupture it", "A second sigil grows watching eyes", "Full three-Anchor network opens linked void mouths", "Tentacles lash from each Anchor and bind crossings", "Five breaches join into living walls that repeatedly lock and crush prey"]),
-		_ability(&"ability_2", "MENTAL CASCADE", ["A psychic whisper cuts through a narrow cone", "The whisper becomes a rift that extends one lock", "Full Mental Cascade floods focused minds with the void", "Tendrils jump between focused enemies as a black web", "Every focused enemy becomes one eldritch nervous system and shares control"]),
+		_ability(&"ability_2", "MENTAL CASCADE", ["A psychic whisper starts Arcane Recursion on hit", "The rift extends one lock and restores Mana over time", "Full Mental Cascade floods minds and fuels regeneration", "Tendrils spread a black web while Recursion runs", "One eldritch nervous system shares control and Mana recovery"]),
 		_ability(&"evade", "FOLD SPACE", ["Slip through a hairline crack in space", "The crack briefly phases through bodies", "Full invulnerable Fold Space crosses the void", "Aim at an Anchor to emerge from its watching rift", "Departure and arrival become hungry maws that freeze prey and reopen on locked deaths"]),
-		_ability(&"ultimate", "ARCANE CONDUIT", ["A distant presence briefly interrupts nearby minds", "Its shadow widens and deepens their focus", "Full Arcane Conduit manifests the watching void", "A cosmic eye suspends locked targets after the blast", "Total Lock opens the abyss: every enemy freezes and suffers through one living web"]),
+		_ability(&"ultimate", "ARCANE CONDUIT", ["A distant presence briefly interrupts nearby minds", "Its shadow widens and deepens their focus", "Full Arcane Conduit manifests the watching void", "A cosmic eye suspends locked targets after the blast", "Transform into an eldritch being for 10 seconds; 90-second cooldown"]),
 	],
 	[
 		_ability(&"signature", "FORM SIGNATURES", ["Quick, uncharged signature tools", "Partial charge and improved precision", "Full signatures for all four forms", "Charged signatures echo the previous form", "Every signature invokes all four forms in sequence"]),
@@ -64,6 +66,7 @@ func configure(hero_index: int) -> void:
 	_hero_index = clampi(hero_index, 0, HERO_ABILITIES.size() - 1)
 	_run_level = 1
 	_ranks.clear()
+	_ranks[&"evade"] = 1
 
 
 func set_run_level(level: int) -> void:
@@ -78,6 +81,18 @@ func get_tier() -> int:
 	return tier_for_level(_run_level)
 
 
+func get_basic_attack_tier() -> int:
+	return tier_for_level(_run_level)
+
+
+func get_basic_attack_power_multiplier() -> float:
+	return float(BASIC_ATTACK_POWER[get_basic_attack_tier() - 1])
+
+
+func get_ability_tier(slot: StringName) -> int:
+	return tier_for_rank(get_rank(slot))
+
+
 static func tier_for_level(level: int) -> int:
 	if level >= TIER_LEVELS[4]:
 		return 5
@@ -90,12 +105,31 @@ static func tier_for_level(level: int) -> int:
 	return 1
 
 
+static func tier_for_rank(rank: int) -> int:
+	if rank >= TIER_RANKS[4]:
+		return 5
+	if rank >= TIER_RANKS[3]:
+		return 4
+	if rank >= TIER_RANKS[2]:
+		return 3
+	if rank >= TIER_RANKS[1]:
+		return 2
+	return 1
+
+
 func get_rank(upgrade_id: StringName) -> int:
 	return int(_ranks.get(upgrade_id, 0))
 
 
 func is_unlocked(slot: StringName) -> bool:
 	return slot in ABILITY_SLOTS and get_rank(slot) > 0
+
+
+func get_ability_title(slot: StringName) -> String:
+	for ability_data: Dictionary in HERO_ABILITIES[_hero_index]:
+		if ability_data[&"id"] == slot:
+			return String(ability_data[&"title"])
+	return String(slot).to_upper()
 
 
 func apply_pick(upgrade_id: StringName, amount := 1) -> Dictionary:
@@ -108,22 +142,39 @@ func get_state(upgrade_id: StringName) -> Dictionary:
 		&"id": upgrade_id,
 		&"kind": &"ability" if upgrade_id in ABILITY_SLOTS else &"stat",
 		&"rank": get_rank(upgrade_id),
-		&"tier": get_tier() if upgrade_id in ABILITY_SLOTS else 0,
+		&"tier": get_ability_tier(upgrade_id) if upgrade_id in ABILITY_SLOTS else 0,
 	}
 
 
 func get_ability_power_multiplier(slot: StringName) -> float:
 	if not is_unlocked(slot):
 		return 0.0
-	var tier_index := get_tier() - 1
+	var tier_index := get_ability_tier(slot) - 1
 	return float(TIER_POWER[tier_index]) * (1.0 + 0.12 * float(get_rank(slot) - 1))
 
 
 func get_ability_cooldown_multiplier(slot: StringName) -> float:
 	if not is_unlocked(slot):
 		return INF
-	var tier_index := get_tier() - 1
+	var tier_index := get_ability_tier(slot) - 1
 	return maxf(0.42, float(TIER_COOLDOWN[tier_index]) * pow(0.94, float(get_rank(slot) - 1)))
+
+
+func _set_ability_option_preview(option: Dictionary, amount: int) -> void:
+	var rank := int(option[&"rank"])
+	var preview_rank := rank + maxi(1, amount)
+	var current_tier := get_ability_tier(option[&"id"] as StringName)
+	var preview_tier := tier_for_rank(preview_rank)
+	var tiers := option[&"tiers"] as Array
+	var prefix := "RANK %d > %d" % [rank, preview_rank]
+	if rank == 0:
+		prefix = "UNLOCK RANK %d" % preview_rank
+	elif preview_tier > current_tier:
+		prefix = "EVOLVE TO TIER %d"
+		prefix = prefix % preview_tier
+	option[&"tier"] = preview_tier
+	option[&"tier_description"] = String(tiers[preview_tier - 1])
+	option[&"description"] = "%s  -  %s" % [prefix, option[&"tier_description"]]
 
 
 func get_double_upgrade_chance() -> float:
@@ -141,17 +192,16 @@ func roll_options(rng: RandomNumberGenerator, count := 6) -> Array[Dictionary]:
 	for ability_data: Dictionary in HERO_ABILITIES[_hero_index]:
 		var slot := ability_data[&"id"] as StringName
 		var rank := get_rank(slot)
-		var tier := get_tier()
 		var tiers := ability_data[&"tiers"] as Array
-		ability_pool.append({
+		var option := {
 			&"id": slot,
 			&"kind": &"ability",
 			&"title": ability_data[&"title"],
-			&"description": ("UNLOCK TIER %d  -  " if rank == 0 else "RANK %d > %d  -  ") % ([tier] if rank == 0 else [rank, rank + 1]) + String(tiers[tier - 1]),
 			&"rank": rank,
-			&"tier": tier,
-			&"tier_description": String(tiers[tier - 1]),
-		})
+			&"tiers": tiers,
+		}
+		_set_ability_option_preview(option, 1)
+		ability_pool.append(option)
 	var option_count := mini(maxi(0, count), stat_pool.size() + ability_pool.size())
 	var options: Array[Dictionary] = []
 	if option_count == 1:
@@ -176,13 +226,13 @@ func roll_options(rng: RandomNumberGenerator, count := 6) -> Array[Dictionary]:
 	for option: Dictionary in options:
 		var amount := 2 if rng.randf() < double_chance else 1
 		option[&"amount"] = amount
+		if option[&"kind"] == &"ability":
+			_set_ability_option_preview(option, amount)
 		if amount < 2:
 			continue
 		option[&"title"] = "DOUBLE %s" % String(option[&"title"])
 		if option[&"kind"] == &"ability":
-			var rank := int(option[&"rank"])
-			var prefix := "UNLOCK RANK 2" if rank == 0 else "RANK %d > %d" % [rank, rank + amount]
-			option[&"description"] = "DOUBLE: %s  -  %s" % [prefix, String(option[&"tier_description"])]
+			option[&"description"] = "DOUBLE: %s" % String(option[&"description"])
 		else:
 			option[&"description"] = "DOUBLE: %s" % String(option[&"description"])
 	return options

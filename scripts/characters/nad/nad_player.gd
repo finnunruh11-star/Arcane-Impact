@@ -38,6 +38,9 @@ const MAX_HEALTH := 220.0
 const MAX_RESOLVE := 160.0
 const MAX_MANA := 100.0
 const MOVE_SPEED := 296.0
+const BASE_MANA_REGEN := 3.0
+const CASCADE_MANA_REGEN := 8.0
+const CASCADE_REGEN_DURATION := 4.0
 const INPUT_BUFFER_DURATION := 0.12
 const FORESEE_COST := 7.0
 const MANTLE_COST := 32.0
@@ -51,6 +54,11 @@ const MANTLE_MAX_RADIUS := 230.0
 const CASCADE_REACH := 324.0
 const CASCADE_HALF_WIDTH := 154.0
 const CONDUIT_RADIUS := 600.0
+const ELDRITCH_FORM_DURATION := 10.0
+const ELDRITCH_FORM_COOLDOWN := 90.0
+const ELDRITCH_FORM_PULSE_INTERVAL := 0.75
+const ELDRITCH_FORM_RADIUS := 300.0
+const MANTLE_EXECUTE_THRESHOLDS := [0.08, 0.12, 0.18, 0.24, 0.32]
 
 var health := MAX_HEALTH
 var resolve := MAX_RESOLVE
@@ -86,6 +94,9 @@ var _survivor_power_multiplier := 1.0
 var _survivor_abilities = SurvivorAbilityStateScript.new()
 var _survivor_stats = SurvivorStatStateScript.new()
 var _fold_reset_defeats: Dictionary = {}
+var _cascade_regen_remaining := 0.0
+var _eldritch_form_remaining := 0.0
+var _eldritch_form_pulse_timer := 0.0
 
 
 func _ready() -> void:
@@ -144,6 +155,14 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_basic_attack_progress(tier: int, power: float) -> void:
+	_survivor_abilities.set_basic_attack_progress(tier, power)
+
+
+func get_survivor_basic_attack_tier() -> int:
+	return _survivor_abilities.get_basic_attack_tier() if _survivor_mode else 3
+
+
 func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
 	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
 
@@ -161,6 +180,8 @@ func get_survivor_ability_tier(slot: StringName) -> int:
 
 
 func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	if slot == &"primary":
+		return _survivor_abilities.get_basic_attack_power() if _survivor_mode else 1.0
 	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
 
 
@@ -208,11 +229,32 @@ func get_max_mana() -> float:
 
 
 func get_mana_regen_per_second() -> float:
-	return 13.0 * _survivor_stats.get_mana_regen_multiplier()
+	var regeneration := BASE_MANA_REGEN
+	if _cascade_regen_remaining > 0.0:
+		regeneration += CASCADE_MANA_REGEN
+	if is_eldritch_form_active():
+		regeneration += 22.0
+	return regeneration * _survivor_stats.get_mana_regen_multiplier()
+
+
+func get_cascade_regen_remaining() -> float:
+	return _cascade_regen_remaining
+
+
+func is_eldritch_form_active() -> bool:
+	return _eldritch_form_remaining > 0.0
+
+
+func get_eldritch_form_remaining() -> float:
+	return _eldritch_form_remaining
+
+
+func get_mantle_execute_threshold() -> float:
+	return float(MANTLE_EXECUTE_THRESHOLDS[get_survivor_ability_tier(&"signature") - 1])
 
 
 func get_move_speed() -> float:
-	return MOVE_SPEED * _survivor_stats.get_move_speed_multiplier()
+	return MOVE_SPEED * _survivor_stats.get_move_speed_multiplier() * (1.28 if is_eldritch_form_active() else 1.0)
 
 
 func get_survivor_health_regen() -> float:
@@ -254,10 +296,13 @@ func _tick_timers(delta: float) -> void:
 	anchor_cooldown = maxf(0.0, anchor_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
 	cascade_cooldown = maxf(0.0, cascade_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
 	fold_cooldown = maxf(0.0, fold_cooldown - _survivor_cooldown_delta(delta, &"evade"))
-	ultimate_cooldown = maxf(0.0, ultimate_cooldown - _survivor_cooldown_delta(delta, &"ultimate"))
+	var ultimate_delta := delta if get_survivor_ability_tier(&"ultimate") >= 5 else _survivor_cooldown_delta(delta, &"ultimate")
+	ultimate_cooldown = maxf(0.0, ultimate_cooldown - ultimate_delta)
 	_invulnerable_time = maxf(0.0, _invulnerable_time - delta)
 	resolve = minf(get_max_resolve(), resolve + delta * 5.8)
 	mana = minf(get_max_mana(), mana + delta * get_mana_regen_per_second())
+	_cascade_regen_remaining = maxf(0.0, _cascade_regen_remaining - delta)
+	_tick_eldritch_form(delta)
 	_anchors = _anchors.filter(func(anchor: TerrainAnchor) -> bool: return is_instance_valid(anchor))
 	_check_fold_reset()
 
@@ -432,7 +477,10 @@ func _begin_foresee() -> void:
 
 
 func _begin_foresee_active() -> void:
-	_set_attack_rectangle(FORESEE_REACH, 30.0, aim_direction)
+	var tier := get_survivor_basic_attack_tier()
+	var reaches := [FORESEE_REACH, 270.0, 310.0, 360.0, 430.0]
+	var half_widths := [30.0, 38.0, 48.0, 62.0, 82.0]
+	_set_attack_rectangle(reaches[tier - 1] as float, half_widths[tier - 1] as float, aim_direction)
 	_attack_resolved = false
 	_attack_area.monitoring = true
 	_state_time = 0.07
@@ -440,32 +488,41 @@ func _begin_foresee_active() -> void:
 
 
 func _apply_foresee() -> void:
-	var nearest: Node2D
-	var nearest_distance := INF
+	var tier := get_survivor_basic_attack_tier()
+	var candidates: Array[Node2D] = []
 	for hurtbox: Area2D in _attack_area.get_overlapping_areas():
 		var target := hurtbox.get_parent() as Node2D
-		if not is_instance_valid(target) or not target.is_in_group(&"enemies"):
+		if not is_instance_valid(target) or not target.is_in_group(&"enemies") or target in candidates:
 			continue
-		var distance := global_position.distance_squared_to(target.global_position)
-		if distance < nearest_distance:
-			nearest = target
-			nearest_distance = distance
-	if not is_instance_valid(nearest):
+		candidates.append(target)
+	if candidates.is_empty():
 		return
+	candidates.sort_custom(func(left: Node2D, right: Node2D) -> bool:
+		return global_position.distance_squared_to(left.global_position) < global_position.distance_squared_to(right.global_position)
+	)
+	_resolve_foresee_candidates(candidates, tier)
+
+
+func _resolve_foresee_candidates(candidates: Array[Node2D], tier: int) -> void:
 	_attack_resolved = true
-	var focus_before := _get_target_focus(nearest)
-	var was_locked := bool(nearest.call(&"is_control_locked"))
-	nearest.call(&"apply_mental_focus", 1, 7.0)
-	nearest.call(&"apply_control_lock", 0.24 + 0.05 * float(focus_before))
-	restore_mana(1.0 if was_locked else 5.0)
-	var direction := (nearest.global_position - global_position).normalized()
-	var packet := DamagePacket.nad_foresee(self, focus_before + 1)
-	var dealt := DamageResolver.apply_with_result(nearest, packet, direction)
-	if dealt > 0.0:
-		combat_impact.emit(nearest.global_position, direction, packet, 0.28 + 0.05 * float(focus_before))
-		mind_link_requested.emit(global_position, nearest.global_position, 0.44)
-		effect_requested.emit(&"nad_probe", nearest.global_position, direction, 0.78)
-	audio_requested.emit(&"nad_probe", 0.35 + 0.08 * float(focus_before))
+	var clamped_tier := clampi(tier, 1, 5)
+	var target_limit := [1, 1, 2, 3, 5][clamped_tier - 1] as int
+	var focus_applied := 2 if clamped_tier >= 4 else 1
+	var strongest_focus := 0
+	for target_index: int in mini(target_limit, candidates.size()):
+		var target := candidates[target_index]
+		var focus_before := _get_target_focus(target)
+		strongest_focus = maxi(strongest_focus, focus_before)
+		target.call(&"apply_mental_focus", focus_applied, 7.0 + float(clamped_tier - 1))
+		target.call(&"apply_control_lock", 0.24 + 0.05 * float(focus_before) + 0.06 * float(clamped_tier - 1))
+		var direction := (target.global_position - global_position).normalized()
+		var packet := DamagePacket.nad_foresee(self, focus_before + focus_applied)
+		var dealt := DamageResolver.apply_with_result(target, packet, direction)
+		if dealt > 0.0:
+			combat_impact.emit(target.global_position, direction, packet, 0.28 + 0.05 * float(focus_before) + 0.04 * float(clamped_tier - 1))
+			mind_link_requested.emit(global_position, target.global_position, 0.40 + 0.10 * float(clamped_tier))
+			effect_requested.emit(&"nad_probe", target.global_position, direction, 0.64 + 0.14 * float(clamped_tier))
+	audio_requested.emit(&"nad_probe", 0.35 + 0.08 * float(strongest_focus) + 0.06 * float(clamped_tier - 1))
 
 
 func _begin_eldritch_mantle() -> void:
@@ -504,10 +561,8 @@ func _apply_mantle() -> void:
 		var target := hurtbox.get_parent() as Node2D
 		if not is_instance_valid(target) or not target.is_in_group(&"enemies"):
 			continue
-		var was_locked := bool(target.call(&"is_control_locked"))
 		target.call(&"apply_mental_focus", [1, 1, 2, 3, 5][tier - 1] as int, 8.0)
 		target.call(&"apply_control_lock", lock_duration)
-		restore_mana(1.5 if was_locked else 4.5)
 		if tier >= 5 and target.has_method(&"pull_toward"):
 			target.call(&"pull_toward", mantle_center, 520.0)
 		var direction := (target.global_position - mantle_center).normalized()
@@ -517,6 +572,38 @@ func _apply_mantle() -> void:
 			mind_link_requested.emit(mantle_center, target.global_position, 0.62)
 		if tier >= 4:
 			_tether_mantle_neighbors(target, mantle_center, lock_duration, tier)
+	_execute_mantle_tentacles(mantle_center, tier)
+
+
+func _execute_mantle_tentacles(mantle_center: Vector2, tier: int) -> int:
+	var threshold := float(MANTLE_EXECUTE_THRESHOLDS[clampi(tier, 1, 5) - 1])
+	var execute_radius := _mantle_radius + [24.0, 36.0, 52.0, 72.0, 96.0][clampi(tier, 1, 5) - 1] as float
+	return _execute_tentacles(mantle_center, execute_radius, threshold, &"signature")
+
+
+func _execute_tentacles(center: Vector2, radius: float, health_threshold: float, ability_slot: StringName) -> int:
+	var executions := 0
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D or not enemy_node.has_method(&"is_alive") or not bool(enemy_node.call(&"is_alive")):
+			continue
+		var target := enemy_node as Node2D
+		if center.distance_to(target.global_position) > radius:
+			continue
+		var current_health := float(target.get("health"))
+		var maximum_health := maxf(1.0, float(target.get("max_health")))
+		if current_health / maximum_health > health_threshold:
+			continue
+		var direction := (target.global_position - center).normalized()
+		var packet := DamagePacket.nad_tentacle_execute(self, current_health)
+		packet.survivor_ability_slot = ability_slot
+		var dealt := DamageResolver.apply_with_result(target, packet, direction)
+		if dealt <= 0.0:
+			continue
+		executions += 1
+		mind_link_requested.emit(center, target.global_position, 1.0)
+		distortion_requested.emit(target.global_position, 72.0, 0.92, &"tentacle_breach")
+		combat_impact.emit(target.global_position, direction, packet, 0.92)
+	return executions
 
 
 func _tether_mantle_neighbors(origin: Node2D, mantle_center: Vector2, lock_duration: float, tier: int) -> void:
@@ -527,9 +614,7 @@ func _tether_mantle_neighbors(origin: Node2D, mantle_center: Vector2, lock_durat
 		if not neighbor.has_method(&"is_alive") or not bool(neighbor.call(&"is_alive")) or origin.global_position.distance_to(neighbor.global_position) > (150.0 if tier == 4 else 220.0):
 			continue
 		neighbor.call(&"apply_mental_focus", 1 if tier == 4 else 2, 8.0)
-		var was_locked := bool(neighbor.call(&"is_control_locked"))
 		neighbor.call(&"apply_control_lock", lock_duration * (0.42 if tier == 4 else 0.72))
-		restore_mana(0.5 if was_locked else 1.5)
 		if tier >= 5 and neighbor.has_method(&"pull_toward"):
 			neighbor.call(&"pull_toward", mantle_center, 380.0)
 		mind_link_requested.emit(origin.global_position, neighbor.global_position, 0.58 if tier == 4 else 0.86)
@@ -575,7 +660,6 @@ func _detonate_anchors() -> void:
 func on_anchor_hit(target: Node2D, at: Vector2, direction: Vector2, packet: DamagePacket) -> void:
 	combat_impact.emit(target.global_position, direction, packet, 0.56)
 	mind_link_requested.emit(at, target.global_position, 0.58)
-	restore_mana(1.5)
 
 
 func on_anchor_detonated(at: Vector2, hit_count: int, tier: int) -> void:
@@ -631,7 +715,6 @@ func _apply_cascade() -> void:
 		if was_locked and tier >= 2 and (tier >= 3 or extensions == 0):
 			target.call(&"extend_control_lock", 0.55 + 0.10 * float(focus_before), 6.0)
 			extensions += 1
-			restore_mana(3.0)
 		var direction := (target.global_position - global_position).normalized()
 		var packet := DamagePacket.nad_cascade(self, focus_before)
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
@@ -640,8 +723,16 @@ func _apply_cascade() -> void:
 			direct_ids[target.get_instance_id()] = true
 			combat_impact.emit(target.global_position, direction, packet, 0.48 + 0.06 * float(focus_before))
 			mind_link_requested.emit(global_position, target.global_position, 0.68)
+	if not directly_hit.is_empty():
+		_activate_cascade_regeneration()
 	if tier >= 4:
 		_apply_cascade_web(directly_hit, direct_ids, direct_lock_found, tier)
+
+
+func _activate_cascade_regeneration() -> void:
+	_cascade_regen_remaining = maxf(_cascade_regen_remaining, CASCADE_REGEN_DURATION)
+	announcement_requested.emit("ARCANE RECURSION")
+	stats_changed.emit()
 
 
 func _apply_cascade_web(origins: Array[Node2D], excluded_ids: Dictionary, share_lock: bool, tier: int) -> void:
@@ -740,8 +831,12 @@ func _check_fold_reset() -> void:
 func _begin_arcane_conduit() -> void:
 	if not _spend_mana(CONDUIT_COST):
 		return
-	ultimate_cooldown = 22.0
 	var tier := get_survivor_ability_tier(&"ultimate")
+	if tier >= 5:
+		ultimate_cooldown = ELDRITCH_FORM_COOLDOWN
+		_activate_eldritch_form()
+		return
+	ultimate_cooldown = 22.0
 	var radii := [250.0, 420.0, CONDUIT_RADIUS, 780.0, 2200.0]
 	_conduit_radius = radii[tier - 1] as float
 	_state_time = [0.40, 0.52, 0.64, 0.72, 0.80][tier - 1] as float
@@ -752,6 +847,50 @@ func _begin_arcane_conduit() -> void:
 	announcement_requested.emit("ARCANE CONDUIT")
 	_set_state(State.ULTIMATE_STARTUP)
 	stats_changed.emit()
+
+
+func _activate_eldritch_form() -> void:
+	_eldritch_form_remaining = ELDRITCH_FORM_DURATION
+	_eldritch_form_pulse_timer = 0.0
+	_invulnerable_time = maxf(_invulnerable_time, 0.85)
+	_set_state(State.FREE)
+	announcement_requested.emit("ELDRITCH ASCENSION")
+	distortion_requested.emit(global_position, ELDRITCH_FORM_RADIUS, 1.0, &"abyssal_eye")
+	audio_requested.emit(&"nad_ultimate", 1.0)
+	stats_changed.emit()
+
+
+func _tick_eldritch_form(delta: float) -> void:
+	if not is_eldritch_form_active() or _state == State.DEAD:
+		return
+	_eldritch_form_remaining = maxf(0.0, _eldritch_form_remaining - delta)
+	_eldritch_form_pulse_timer -= delta
+	if _eldritch_form_pulse_timer <= 0.0:
+		_eldritch_form_pulse_timer += ELDRITCH_FORM_PULSE_INTERVAL
+		_pulse_eldritch_form()
+	if _eldritch_form_remaining <= 0.0:
+		announcement_requested.emit("ELDRITCH FORM RECEDES")
+		distortion_requested.emit(global_position, 120.0, 0.72, &"rift")
+		stats_changed.emit()
+
+
+func _pulse_eldritch_form() -> void:
+	var packet := DamagePacket.nad_eldritch_form(self)
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D or not enemy_node.has_method(&"is_alive") or not bool(enemy_node.call(&"is_alive")):
+			continue
+		var target := enemy_node as Node2D
+		if global_position.distance_to(target.global_position) > ELDRITCH_FORM_RADIUS:
+			continue
+		target.call(&"apply_mental_focus", 1, 8.0)
+		target.call(&"apply_control_lock", 0.28)
+		var direction := (target.global_position - global_position).normalized()
+		var dealt := DamageResolver.apply_with_result(target, packet, direction)
+		if dealt > 0.0:
+			mind_link_requested.emit(global_position, target.global_position, 0.82)
+			combat_impact.emit(target.global_position, direction, packet, 0.46)
+	_execute_tentacles(global_position, ELDRITCH_FORM_RADIUS, 0.32, &"ultimate")
+	distortion_requested.emit(global_position, ELDRITCH_FORM_RADIUS, 0.72, &"tentacle_breach")
 
 
 func _resolve_arcane_conduit() -> void:
@@ -774,7 +913,6 @@ func _resolve_arcane_conduit() -> void:
 		elif tier >= 5:
 			lock_duration = 6.0
 		target.call(&"apply_control_lock", lock_duration)
-		restore_mana(2.0 if was_locked else 5.0)
 		var direction := (target.global_position - global_position).normalized()
 		var packet := DamagePacket.nad_conduit(self, focus_before, was_locked)
 		if tier >= 5:
@@ -801,8 +939,9 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 		audio_requested.emit(&"nad_phase", 0.42)
 		return 0.0
 	var before := health
-	health = maxf(0.0, health - packet.health_damage)
-	resolve = maxf(0.0, resolve - packet.resolve_damage)
+	var form_defense := 0.45 if is_eldritch_form_active() else 1.0
+	health = maxf(0.0, health - packet.health_damage * form_defense)
+	resolve = maxf(0.0, resolve - packet.resolve_damage * form_defense)
 	_knockback_velocity += incoming_direction.normalized() * packet.knockback_force
 	audio_requested.emit(&"nad_hurt", clampf(packet.health_damage / 36.0, 0.2, 1.0))
 	if resolve <= 0.0 and _state != State.ULTIMATE_STARTUP:
@@ -834,6 +973,8 @@ func restore_mana(amount: float) -> void:
 
 
 func _spend_mana(cost: float) -> bool:
+	if is_eldritch_form_active():
+		return true
 	if mana + 0.001 < cost:
 		return false
 	mana = maxf(0.0, mana - cost)
@@ -914,6 +1055,8 @@ func is_mantle_charging() -> bool:
 
 
 func get_state_label() -> String:
+	if is_eldritch_form_active() and _state == State.FREE:
+		return "Eldritch Form"
 	match _state:
 		State.FORESEE_STARTUP, State.FORESEE_ACTIVE, State.FORESEE_RECOVERY:
 			return "Foresee"
@@ -960,6 +1103,19 @@ func _draw() -> void:
 		var angle := _visual_time * (0.72 + float(rune_index) * 0.13) + TAU * float(rune_index) / 3.0
 		var rune := Vector2.from_angle(angle) * (35.0 + float(rune_index) * 4.0)
 		draw_circle(rune, 3.5, Color("75ebf4"))
+	if is_eldritch_form_active():
+		var form_ratio := _eldritch_form_remaining / ELDRITCH_FORM_DURATION
+		draw_circle(Vector2.ZERO, 92.0, Color(0.12, 0.72, 0.58, 0.10 + form_ratio * 0.05))
+		draw_arc(Vector2.ZERO, 92.0, 0.0, TAU, 72, Color(0.58, 1.0, 0.72, 0.78), 4.0, true)
+		for tentacle_index: int in 6:
+			var angle := _visual_time * (0.55 if tentacle_index % 2 == 0 else -0.42) + TAU * float(tentacle_index) / 6.0
+			var direction := Vector2.from_angle(angle)
+			var side := direction.orthogonal()
+			var points := PackedVector2Array([Vector2.ZERO, direction * 46.0 + side * sin(_visual_time * 3.0 + tentacle_index) * 14.0, direction * 94.0])
+			draw_polyline(points, Color(0.34, 0.92, 0.62, 0.72), 7.0, true)
+		draw_circle(Vector2.ZERO, 20.0, Color("081014"))
+		draw_circle(Vector2.ZERO, 10.0, Color("d7ff92"))
+		draw_circle(Vector2(3.0, -2.0), 4.0, Color("17212d"))
 
 	if _state == State.MANTLE_CHARGE:
 		draw_circle(_mantle_center_local, _mantle_radius, Color(0.15, 0.70, 0.76, 0.075))

@@ -156,6 +156,14 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_basic_attack_progress(tier: int, power: float) -> void:
+	_survivor_abilities.set_basic_attack_progress(tier, power)
+
+
+func get_survivor_basic_attack_tier() -> int:
+	return _survivor_abilities.get_basic_attack_tier() if _survivor_mode else 3
+
+
 func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
 	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
 
@@ -173,6 +181,8 @@ func get_survivor_ability_tier(slot: StringName) -> int:
 
 
 func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	if slot == &"primary":
+		return _survivor_abilities.get_basic_attack_power() if _survivor_mode else 1.0
 	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
 
 
@@ -422,7 +432,7 @@ func _update_movement() -> void:
 func _begin_dart() -> bool:
 	if not _spend_mana(DART_MANA_COST):
 		return false
-	_state_time = 0.055
+	_state_time = [0.055, 0.050, 0.044, 0.038, 0.032][get_survivor_basic_attack_tier() - 1] as float
 	audio_requested.emit(&"sniff_dart_charge", float(blessing) / float(MAX_BLESSING))
 	_set_state(State.DART_STARTUP)
 	return true
@@ -433,9 +443,10 @@ func _spawn_dart() -> void:
 	dart.configure(self, aim_direction, blessing)
 	get_parent().add_child(dart)
 	dart.global_position = global_position + aim_direction * 42.0
-	lightning_arc_requested.emit(global_position - aim_direction * 18.0, dart.global_position + aim_direction * 22.0, 0.35)
+	var tier := get_survivor_basic_attack_tier()
+	lightning_arc_requested.emit(global_position - aim_direction * 18.0, dart.global_position + aim_direction * 22.0, 0.30 + 0.10 * float(tier))
 	audio_requested.emit(&"sniff_dart", float(blessing) / float(MAX_BLESSING))
-	_state_time = 0.105
+	_state_time = [0.105, 0.094, 0.082, 0.070, 0.058][tier - 1] as float
 	_set_state(State.DART_RECOVERY)
 
 
@@ -451,7 +462,8 @@ func on_lightning_dart_hit(target: Node2D, at: Vector2, direction: Vector2, bles
 	combat_impact.emit(at, direction, packet, 0.34 + float(blessing_snapshot) * 0.025)
 	lightning_arc_requested.emit(at - direction * 48.0, at, 0.48)
 
-	var should_chain := _overcharge_time > 0.0 or _rng.randf() <= chain_chance
+	var tier := get_survivor_basic_attack_tier()
+	var should_chain := tier >= 2 or _overcharge_time > 0.0 or _rng.randf() <= chain_chance
 	if not should_chain:
 		return
 	var candidates: Array[Node2D] = []
@@ -459,12 +471,15 @@ func on_lightning_dart_hit(target: Node2D, at: Vector2, direction: Vector2, bles
 		if not enemy_node is Node2D or enemy_node == target:
 			continue
 		var enemy := enemy_node as Node2D
-		if target.global_position.distance_to(enemy.global_position) <= 265.0 and _target_is_alive(enemy):
+		var chain_radius := [265.0, 285.0, 320.0, 365.0, 430.0][tier - 1] as float
+		if target.global_position.distance_to(enemy.global_position) <= chain_radius and _target_is_alive(enemy):
 			candidates.append(enemy)
 	candidates.sort_custom(func(left: Node2D, right: Node2D) -> bool:
 		return target.global_position.distance_squared_to(left.global_position) < target.global_position.distance_squared_to(right.global_position)
 	)
-	var chain_limit := 2 if blessing_snapshot >= 7 else 1
+	var chain_limit := [1, 1, 2, 3, 5][tier - 1] as int
+	if tier <= 2 and blessing_snapshot >= 7:
+		chain_limit += 1
 	var previous := target
 	for chain_index: int in mini(chain_limit, candidates.size()):
 		var chained_target := candidates[chain_index]
@@ -475,6 +490,8 @@ func on_lightning_dart_hit(target: Node2D, at: Vector2, direction: Vector2, bles
 			gain_blessing(1)
 			lightning_arc_requested.emit(previous.global_position, chained_target.global_position, 0.72 - float(chain_index) * 0.12)
 			combat_impact.emit(chained_target.global_position, chain_direction, chain_packet, 0.28)
+			if tier >= 5:
+				thunder_burst_requested.emit(chained_target.global_position, 82.0, 0.42, false)
 		previous = chained_target
 	audio_requested.emit(&"sniff_chain", clampf(float(candidates.size()) / 2.0, 0.35, 1.0))
 

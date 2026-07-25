@@ -145,6 +145,53 @@ func _run() -> void:
 	enemy.position = Vector2(570.0, 360.0)
 	kat_world.add_child(enemy)
 	await process_frame
+	var role_enemies: Array[ReliquaryPursuer] = []
+	var role_names: Dictionary = {}
+	var attack_styles: Dictionary = {}
+	var all_roles_have_sprites := true
+	for role_index: int in ReliquaryPursuer.ROLE_COUNT:
+		var role_enemy := ReliquaryPursuerScript.new() as ReliquaryPursuer
+		role_enemy.configure(kat, role_index)
+		role_enemy.position = Vector2(900.0 + float(role_index) * 80.0, 700.0)
+		kat_world.add_child(role_enemy)
+		role_enemies.append(role_enemy)
+		role_names[role_enemy.display_name] = true
+		attack_styles[role_enemy.get_attack_style()] = true
+	await process_frame
+	for role_enemy: ReliquaryPursuer in role_enemies:
+		role_enemy.process_mode = Node.PROCESS_MODE_DISABLED
+		all_roles_have_sprites = all_roles_have_sprites and role_enemy.get_node_or_null(^"EnemySprite") is AnimatedSprite2D
+	_expect(role_names.size() == ReliquaryPursuer.ROLE_COUNT and attack_styles.size() == ReliquaryPursuer.ROLE_COUNT, "the horde exposes six named enemies with six distinct attack styles")
+	_expect(all_roles_have_sprites, "every enemy role renders an imported animated mob sprite")
+	_expect(role_enemies[ReliquaryPursuer.Role.BULWARK].max_health > role_enemies[ReliquaryPursuer.Role.RAIDER].max_health * 2.0 and role_enemies[ReliquaryPursuer.Role.BULWARK].move_speed < role_enemies[ReliquaryPursuer.Role.RAIDER].move_speed, "Iron Bulwarks are visibly tanky and slow")
+	_expect(role_enemies[ReliquaryPursuer.Role.BLOODRUNNER].move_speed > role_enemies[ReliquaryPursuer.Role.RAIDER].move_speed, "Bloodrunners are the dedicated rushdown profile")
+	role_enemies[ReliquaryPursuer.Role.RAIDER].global_position = Vector2(900.0, 700.0)
+	role_enemies[ReliquaryPursuer.Role.BLOODRUNNER].global_position = Vector2(930.0, 700.0)
+	_expect(not (role_enemies[ReliquaryPursuer.Role.RAIDER].call("_get_horde_separation_direction") as Vector2).is_zero_approx(), "nearby horde members steer apart instead of drawing directly on top of each other")
+	var support_target := role_enemies[ReliquaryPursuer.Role.RAIDER]
+	var warcaller := role_enemies[ReliquaryPursuer.Role.WARCALLER]
+	support_target.global_position = Vector2(900.0, 700.0)
+	warcaller.global_position = Vector2(980.0, 700.0)
+	support_target.health = support_target.max_health * 0.40
+	var support_health_before: float = support_target.health
+	warcaller.call("_perform_support_pulse")
+	_expect(support_target.health > support_health_before, "Warcaller support pulses heal nearby horde allies")
+	var arcanist := role_enemies[ReliquaryPursuer.Role.BONE_ARCANIST]
+	arcanist.global_position = kat.global_position + Vector2(-240.0, 0.0)
+	arcanist.set("_facing", Vector2.RIGHT)
+	var ranged_health_before: float = kat.health
+	arcanist.call("_spawn_projectile", EnemyProjectile.Kind.ARCANE_ORB)
+	var spawned_enemy_projectile := false
+	for child: Node in kat_world.get_children():
+		if child is EnemyProjectile:
+			spawned_enemy_projectile = true
+	_expect(spawned_enemy_projectile, "ranged enemy roles create collision-backed projectiles")
+	for _frame: int in 90:
+		await physics_frame
+		await process_frame
+		if kat.health < ranged_health_before:
+			break
+	_expect(kat.health < ranged_health_before, "Bone Arcanist projectiles travel into and damage the hero hurtbox")
 
 	kat.aim_direction = Vector2.RIGHT
 	kat.call("_begin_guard")
@@ -176,6 +223,16 @@ func _run() -> void:
 	kat.mana = 0.1
 	kat.call("_tick_sustained_mana", 1.0)
 	_expect(kat.mana == 0.0 and not kat.is_halo_active(), "Kat's sustained spells shut off automatically when Mana is exhausted")
+	kat.restore_mana(999.0)
+	kat.apply_survivor_stat(&"mana", 24)
+	kat.mana = 60.0
+	kat.call("_cast_leech_choir")
+	kat.call("_cast_mourning_halo")
+	var neutral_sustain_before: float = kat.mana
+	kat.call("_tick_sustained_mana", 1.0)
+	_expect(kat.mana >= neutral_sustain_before and kat.is_leech_choir_active() and kat.is_halo_active(), "Mana regeneration can fully offset both of Kat's active channel drains")
+	kat.call("_cast_leech_choir")
+	kat.call("_cast_mourning_halo")
 	kat.restore_mana(999.0)
 	kat.call("_cast_mourning_halo")
 	enemy.apply_curse(10, 6.0)
@@ -238,10 +295,12 @@ func _run() -> void:
 	sniff.chain_chance = 1.0
 	var primary_health_before: float = sniff_enemies[0].health
 	var chain_health_before: float = sniff_enemies[1].health
+	var second_chain_health_before: float = sniff_enemies[2].health
 	sniff.on_lightning_dart_hit(sniff_enemies[0], sniff_enemies[0].global_position, Vector2.RIGHT, 0)
 	_expect(sniff_enemies[0].health < primary_health_before, "Lightning Dart damages its primary target")
 	_expect(sniff_enemies[1].health < chain_health_before, "Lightning Dart chains to a nearby second target")
-	_expect(sniff.get_blessing_count() == 2, "dart and chain hits each build Blessing")
+	_expect(sniff_enemies[2].health < second_chain_health_before, "tier-three Lightning Dart evolves into a second damaging chain")
+	_expect(sniff.get_blessing_count() == 3, "dart and both evolved chain hits each build Blessing")
 
 	sniff.aim_direction = Vector2.RIGHT
 	var dart_mana_before: float = sniff.mana
@@ -350,6 +409,8 @@ func _run() -> void:
 	var amplified_packet = DamagePacketScript.nad_foresee(nad, 0)
 	var amplified_damage: float = nad_enemy.receive_hit(amplified_packet, Vector2.RIGHT)
 	_expect(is_equal_approx(amplified_damage, amplified_packet.health_damage * 1.6), "five Focus stacks amplify damage to a locked target")
+	_expect(is_equal_approx(nad.get_mana_regen_per_second(), NadPlayerScript.BASE_MANA_REGEN), "Nad has low passive Mana regeneration outside Mental Cascade")
+	_expect(DamagePacketScript.nad_foresee(nad, 0).health_damage == 7.0 and DamagePacketScript.nad_anchor(nad).health_damage == 15.0, "Nad's control tools deal deliberately low health damage")
 
 	nad.mana = NadPlayerScript.MAX_MANA
 	nad_enemy.set("_control_lock_remaining", 0.0)
@@ -361,7 +422,20 @@ func _run() -> void:
 		await physics_frame
 		await process_frame
 	_expect(nad_enemy.health < foresee_health_before, "Foresee damages through its narrow collision probe")
-	_expect(nad.mana > NadPlayerScript.MAX_MANA - NadPlayerScript.FORESEE_COST and nad.mana < NadPlayerScript.MAX_MANA, "a fresh Foresee lock refunds most of its Mana cost")
+	_expect(nad.mana >= NadPlayerScript.MAX_MANA - NadPlayerScript.FORESEE_COST and nad.mana < NadPlayerScript.MAX_MANA - NadPlayerScript.FORESEE_COST + 1.0, "Foresee receives only Nad's low passive Mana regeneration")
+
+	nad.set("_state", NadPlayer.State.FREE)
+	nad.mana = 40.0
+	nad_enemy.global_position = nad.global_position + Vector2(150.0, 0.0)
+	nad_enemy.apply_control_lock(2.0)
+	nad.call("_begin_mental_cascade")
+	for _frame: int in 18:
+		await physics_frame
+		await process_frame
+	_expect(nad.get_cascade_regen_remaining() > 0.0, "a successful Mental Cascade activates Arcane Recursion")
+	var cascade_mana_before: float = nad.mana
+	nad.call("_tick_timers", 1.0)
+	_expect(nad.mana >= cascade_mana_before + NadPlayerScript.BASE_MANA_REGEN + NadPlayerScript.CASCADE_MANA_REGEN - 0.01, "Mental Cascade temporarily supplies Nad's strong Mana regeneration")
 
 	var anchor_enemy = ReliquaryPursuerScript.new()
 	anchor_enemy.configure(nad, 1)
@@ -399,14 +473,41 @@ func _run() -> void:
 		await physics_frame
 		await process_frame
 	var conduit_target_before: float = conduit_enemy.health
+	nad.set("_cascade_regen_remaining", 0.0)
+	nad.mana = 10.0
+	var conduit_mana_before_resolution: float = nad.mana
 	nad.call("_resolve_arcane_conduit")
-	_expect(nad.mana > conduit_mana_after_cost, "Arcane Conduit restores Mana from prepared control targets")
+	_expect(is_equal_approx(nad.mana, conduit_mana_before_resolution), "Arcane Conduit no longer refunds Mana per controlled target")
 	_expect(conduit_enemy.health < conduit_target_before, "Arcane Conduit cashes out a locked target across its arena sensor")
 	_expect(nad.ultimate_cooldown > 0.0, "Arcane Conduit starts its cooldown")
 	_expect(
 		DamagePacketScript.nad_conduit(nad, 3, true).health_damage > DamagePacketScript.nad_conduit(nad, 3, false).health_damage,
 		"Arcane Conduit explicitly rewards pre-locked targets"
 	)
+
+	nad.set("_state", NadPlayer.State.FREE)
+	nad.set_survivor_mode(true)
+	nad.set_survivor_ability_progress(&"signature", 20, 5, 1.62, 0.74)
+	var execute_enemy = ReliquaryPursuerScript.new()
+	execute_enemy.configure(nad, 0)
+	execute_enemy.global_position = nad.global_position + Vector2(90.0, 0.0)
+	nad_world.add_child(execute_enemy)
+	await process_frame
+	execute_enemy.process_mode = Node.PROCESS_MODE_DISABLED
+	execute_enemy.health = execute_enemy.max_health * 0.30
+	_expect(is_equal_approx(nad.get_mantle_execute_threshold(), 0.32), "rank-twenty Mantle raises its tentacle execute threshold to 32 percent")
+	var mantle_execution_count := int(nad.call("_execute_mantle_tentacles", nad.global_position, 5))
+	_expect(mantle_execution_count >= 1, "rank-twenty Mantle tentacles acquire nearby enemies below their execute threshold")
+	_expect(not execute_enemy.is_alive(), "Mantle tentacle execution immediately kills its acquired target")
+	nad.set_survivor_ability_progress(&"ultimate", 20, 5, 1.62, 0.74)
+	nad.mana = NadPlayerScript.MAX_MANA
+	nad.ultimate_cooldown = 0.0
+	nad.call("_begin_arcane_conduit")
+	_expect(nad.is_eldritch_form_active() and is_equal_approx(nad.get_eldritch_form_remaining(), NadPlayerScript.ELDRITCH_FORM_DURATION), "rank-twenty Arcane Conduit transforms Nad for ten seconds")
+	_expect(is_equal_approx(nad.ultimate_cooldown, NadPlayerScript.ELDRITCH_FORM_COOLDOWN), "Eldritch Form starts a true ninety-second cooldown")
+	var eldritch_cooldown_before: float = nad.ultimate_cooldown
+	nad.call("_tick_timers", 1.0)
+	_expect(is_equal_approx(nad.ultimate_cooldown, eldritch_cooldown_before - 1.0), "Eldritch Form cooldown is not shortened by ability-rank cooldown scaling")
 
 	nad_world.queue_free()
 	await process_frame

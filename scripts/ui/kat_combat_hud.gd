@@ -114,12 +114,13 @@ func _process(delta: float) -> void:
 	_update_slot(&"ultimate", 0.0 if _player.vitality >= KatPlayer.MAX_VITALITY else 1.0, 1.0)
 	_update_slot(&"primary", 0.0, 1.0)
 	_update_slot(&"guard", 0.0, 1.0)
+	var sustain_status := _format_sustain_status()
 	if _player.is_leech_choir_active():
-		_set_slot_status(&"leech", "ON  -16 MANA/s", Color("f08aa0"), _mana_bar.value)
+		_set_slot_status(&"leech", sustain_status, Color("f08aa0"), _mana_bar.value)
 	elif _player.leech_cooldown <= 0.0:
 		_set_slot_status(&"leech", "TOGGLE  16/s", Color("f6d97d"), 100.0)
 	if _player.is_halo_active():
-		_set_slot_status(&"halo", "ON  -22 MANA/s", Color("f08aa0"), _mana_bar.value)
+		_set_slot_status(&"halo", sustain_status, Color("f08aa0"), _mana_bar.value)
 	elif _player.halo_cooldown <= 0.0:
 		_set_slot_status(&"halo", "TOGGLE  22/s", Color("f6d97d"), 100.0)
 	_apply_progression_status(&"guard", &"signature")
@@ -133,6 +134,15 @@ func _process(delta: float) -> void:
 		_refresh_glyphs()
 	_announcement_timer = maxf(0.0, _announcement_timer - delta)
 	_announcement.modulate.a = minf(1.0, _announcement_timer * 3.0)
+
+
+func _format_sustain_status() -> String:
+	var balance := _player.get_sustained_mana_balance_per_second()
+	if absf(balance) < 0.05:
+		return "ON  NEUTRAL"
+	if balance > 0.0:
+		return "ON  +%.1f/s" % balance
+	return "ON  %.1f NET/s" % balance
 
 
 func set_encounter(wave: int, enemies_remaining: int) -> void:

@@ -69,6 +69,7 @@ var _using_gamepad := false
 var _combo_stage := 0
 var _primary_buffer := 0.0
 var _combo_buffered := false
+var _primary_evolution_resolved := false
 var _guard_elapsed := 0.0
 var _absorbed_force := 0.0
 var _slam_power := 0.0
@@ -147,6 +148,14 @@ func get_survivor_power_multiplier() -> float:
 	return _survivor_power_multiplier
 
 
+func set_survivor_basic_attack_progress(tier: int, power: float) -> void:
+	_survivor_abilities.set_basic_attack_progress(tier, power)
+
+
+func get_survivor_basic_attack_tier() -> int:
+	return _survivor_abilities.get_basic_attack_tier() if _survivor_mode else 3
+
+
 func set_survivor_ability_progress(slot: StringName, rank: int, tier: int, power: float, cooldown: float) -> void:
 	_survivor_abilities.set_progress(slot, rank, tier, power, cooldown)
 	if slot == &"ultimate" and rank > 0 and tier >= 5 and not _last_stand_unlocked:
@@ -167,6 +176,8 @@ func get_survivor_ability_tier(slot: StringName) -> int:
 
 
 func get_survivor_ability_power_multiplier(slot: StringName) -> float:
+	if slot == &"primary":
+		return _survivor_abilities.get_basic_attack_power() if _survivor_mode else 1.0
 	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
 
 
@@ -268,20 +279,27 @@ func _tick_cooldowns(delta: float) -> void:
 
 
 func _tick_sustained_mana(delta: float) -> void:
-	mana = minf(get_max_mana(), mana + get_mana_regen_per_second() * delta)
+	var drain_per_second := get_sustained_mana_drain_per_second()
+	var regeneration_per_second := get_mana_regen_per_second()
+	mana = clampf(mana + (regeneration_per_second - drain_per_second) * delta, 0.0, get_max_mana())
+	if drain_per_second <= regeneration_per_second or mana > 0.0:
+		return
+	_disable_leech_choir()
+	_disable_mourning_halo()
+	announcement_requested.emit("MANA EXHAUSTED")
+
+
+func get_sustained_mana_drain_per_second() -> float:
 	var drain_per_second := 0.0
 	if is_leech_choir_active():
 		drain_per_second += LEECH_MANA_DRAIN
 	if is_halo_active():
 		drain_per_second += HALO_MANA_DRAIN
-	if drain_per_second <= 0.0:
-		return
-	mana = maxf(0.0, mana - drain_per_second * delta)
-	if mana > 0.0:
-		return
-	_disable_leech_choir()
-	_disable_mourning_halo()
-	announcement_requested.emit("MANA EXHAUSTED")
+	return drain_per_second
+
+
+func get_sustained_mana_balance_per_second() -> float:
+	return get_mana_regen_per_second() - get_sustained_mana_drain_per_second()
 
 
 func _update_buffers(delta: float) -> void:
@@ -436,6 +454,7 @@ func _update_movement() -> void:
 func _begin_primary(stage: int) -> void:
 	_combo_stage = clampi(stage, 0, 2)
 	_hit_target_ids.clear()
+	_primary_evolution_resolved = false
 	_state_time = float(PRIMARY_STARTUP[_combo_stage])
 	_set_state(State.PRIMARY_STARTUP)
 	audio_requested.emit(&"kat_swing", float(_combo_stage) / 2.0)
@@ -443,19 +462,49 @@ func _begin_primary(stage: int) -> void:
 
 func _begin_primary_active() -> void:
 	_state_time = float(PRIMARY_ACTIVE[_combo_stage])
-	_set_attack_box(float(PRIMARY_REACH[_combo_stage]), float(PRIMARY_HALF_WIDTH[_combo_stage]), aim_direction)
+	var tier := get_survivor_basic_attack_tier()
+	var reach_scale := [1.0, 1.10, 1.20, 1.34, 1.50][tier - 1] as float
+	var width_scale := [1.0, 1.08, 1.18, 1.34, 1.54][tier - 1] as float
+	_set_attack_box(float(PRIMARY_REACH[_combo_stage]) * reach_scale, float(PRIMARY_HALF_WIDTH[_combo_stage]) * width_scale, aim_direction)
 	_attack_area.monitoring = true
 	_set_state(State.PRIMARY_ACTIVE)
 
 
 func _apply_primary_hits() -> void:
+	var tier := get_survivor_basic_attack_tier()
 	var packet := DamagePacket.kat_primary(_combo_stage, self)
-	_apply_attack_hits(packet, 1 if _combo_stage == 2 else 0, 0.13)
+	_apply_attack_hits(packet, (2 if tier >= 3 else 1) if _combo_stage == 2 else 0, 0.13)
+	if _combo_stage == 2 and tier >= 4 and not _primary_evolution_resolved:
+		_primary_evolution_resolved = true
+		_resolve_primary_finisher_wave(tier)
+
+
+func _resolve_primary_finisher_wave(tier: int) -> void:
+	var reach := 235.0 if tier == 4 else 330.0
+	var packet := DamagePacket.kat_primary(2, self)
+	packet.health_damage *= 0.58 if tier == 4 else 0.82
+	packet.resolve_damage *= 0.72 if tier == 4 else 1.0
+	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
+		if not enemy_node is Node2D or not enemy_node.has_method(&"is_alive") or not bool(enemy_node.call(&"is_alive")):
+			continue
+		var target := enemy_node as Node2D
+		var to_target := target.global_position - global_position
+		if to_target.length() > reach or (not to_target.is_zero_approx() and aim_direction.dot(to_target.normalized()) < (-0.15 if tier >= 5 else 0.20)):
+			continue
+		var direction := to_target.normalized()
+		var dealt := DamageResolver.apply_with_result(target, packet, direction)
+		if dealt > 0.0:
+			combat_impact.emit(target.global_position, direction, packet, 0.66 if tier == 4 else 0.88)
+			if target.has_method(&"apply_curse"):
+				target.call(&"apply_curse", 1 if tier == 4 else 2, 6.0)
+	effect_requested.emit(&"kat_absorb", global_position + aim_direction * 92.0, aim_direction, 1.45 if tier == 4 else 2.05)
+	audio_requested.emit(&"kat_slam", 0.72 if tier == 4 else 1.0)
 
 
 func _begin_primary_recovery() -> void:
 	_attack_area.monitoring = false
-	_state_time = float(PRIMARY_RECOVERY[_combo_stage])
+	var recovery_scale := [1.0, 0.94, 0.88, 0.81, 0.74][get_survivor_basic_attack_tier() - 1] as float
+	_state_time = float(PRIMARY_RECOVERY[_combo_stage]) * recovery_scale
 	_set_state(State.PRIMARY_RECOVERY)
 
 

@@ -25,6 +25,20 @@ func _capture() -> void:
 		enemy.global_position = enemy_positions[index]
 		enemy.process_mode = Node.PROCESS_MODE_DISABLED
 
+	player.set_survivor_mode(true)
+	player.set_survivor_basic_attack_progress(5, 2.15)
+	for slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
+		player.set_survivor_ability_progress(slot, 20, 5, 3.28, 0.72)
+	var primary_target := enemies[0] as ReliquaryPursuer
+	player.on_lightning_dart_hit(primary_target, primary_target.global_position, Vector2.RIGHT, player.blessing)
+	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("BASIC ATTACK / TIER 5")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("sniff_primary_t5.png"):
+		quit(1)
+		return
+	player.set_survivor_mode(false)
+
 	player.blessing = 6
 	player.call("_cast_roaring_blessing")
 	for _frame: int in 5:

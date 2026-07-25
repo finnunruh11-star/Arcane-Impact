@@ -21,7 +21,12 @@ const HERO_NAMES := ["Kat", "Sniff", "Nad", "Fin"]
 const HERO_INTROS := ["THE TITHE BEGINS", "THE STORM GATHERS", "THE MIND OPENS", "THE HUNT BEGINS"]
 const RUN_DURATION := 600.0
 const STARTING_ENEMIES := 5
-const MAX_ENEMIES := 48
+const MIN_ENEMY_TARGET := 6
+const MAX_ENEMIES := 30
+const KILL_RATE_WINDOW := 30.0
+const KILL_RATE_GRACE := 10.0
+const BASE_SPAWN_RATE := 0.20
+const KILL_RATE_SPAWN_SCALE := 1.10
 const BASE_PICKUP_RADIUS := 120.0
 
 @export_range(0, 3, 1) var hero_index := 0
@@ -42,11 +47,13 @@ var _run_time := 0.0
 var _spawn_timer := 0.0
 var _recovery_timer := 0.0
 var _kills := 0
+var _recent_kill_times: Array[float] = []
 var _level := 1
 var _experience := 0
 var _experience_required := 4
 var _experience_multiplier := 1.0
 var _pending_upgrade_values: Dictionary = {}
+var _pending_basic_attack_tier := 0
 var _level_up_active := false
 var _run_ended := false
 
@@ -115,6 +122,21 @@ func get_kills() -> int:
 func get_enemy_count() -> int:
 	_refresh_enemies()
 	return _enemies.size()
+
+
+func get_recent_kill_rate() -> float:
+	_prune_recent_kills()
+	var observed_duration := minf(KILL_RATE_WINDOW, maxf(KILL_RATE_GRACE, _run_time))
+	return float(_recent_kill_times.size()) / observed_duration
+
+
+func get_spawn_target_count() -> int:
+	return mini(MAX_ENEMIES, MIN_ENEMY_TARGET + ceili(get_recent_kill_rate() * 12.0))
+
+
+func get_spawn_interval() -> float:
+	var spawn_rate := BASE_SPAWN_RATE + get_recent_kill_rate() * KILL_RATE_SPAWN_SCALE
+	return clampf(1.0 / spawn_rate, 0.28, 5.0)
 
 
 func is_level_up_active() -> bool:
@@ -225,18 +247,24 @@ func _refresh_enemies() -> void:
 
 func _tick_spawner(delta: float) -> void:
 	_spawn_timer -= delta
-	var target_count := mini(MAX_ENEMIES, 6 + int(floor(_run_time / 12.0)) * 2)
+	var target_count := get_spawn_target_count()
 	if _spawn_timer > 0.0 or _enemies.size() >= target_count:
 		return
 	_spawn_enemy()
-	_spawn_timer = maxf(0.20, 0.86 - _run_time * 0.0011)
+	_spawn_timer = get_spawn_interval()
+
+
+func _prune_recent_kills() -> void:
+	var cutoff := _run_time - KILL_RATE_WINDOW
+	while not _recent_kill_times.is_empty() and _recent_kill_times[0] < cutoff:
+		_recent_kill_times.pop_front()
 
 
 func _spawn_enemy() -> void:
 	if not is_instance_valid(_player):
 		return
 	var enemy := ReliquaryPursuer.new()
-	var variant := (_kills + _enemies.size()) % 3
+	var variant := (_kills + _enemies.size()) % ReliquaryPursuer.ROLE_COUNT
 	enemy.configure(_player, variant)
 	var health_scale := 1.0 + _run_time / 210.0
 	var damage_scale := 1.0 + _run_time / 360.0
@@ -292,6 +320,7 @@ func _tick_recovery(delta: float) -> void:
 
 func _on_enemy_defeated(enemy: ReliquaryPursuer) -> void:
 	_kills += 1
+	_recent_kill_times.append(_run_time)
 	var shard = ExperienceShardScript.new()
 	shard.name = "ArcaneEssence"
 	shard.configure(_player, 1 + int(floor(_run_time / 180.0)), BASE_PICKUP_RADIUS)
@@ -316,9 +345,13 @@ func _try_level_up() -> void:
 	if _level_up_active or _run_ended or _experience < _experience_required:
 		return
 	_experience -= _experience_required
+	var previous_basic_tier: int = int(_progression.get_basic_attack_tier())
 	_level += 1
 	_experience_required = 4 + _level * 3
 	_progression.set_run_level(_level)
+	var next_basic_tier: int = int(_progression.get_basic_attack_tier())
+	if next_basic_tier > previous_basic_tier:
+		_pending_basic_attack_tier = next_basic_tier
 	_sync_ability_progression()
 	_level_up_active = true
 	get_tree().paused = true
@@ -337,6 +370,7 @@ func _on_upgrade_selected(upgrade_id: StringName, forced_amount := 0) -> void:
 	if not _level_up_active:
 		return
 	var amount := forced_amount if forced_amount > 0 else int(_pending_upgrade_values.get(upgrade_id, 1))
+	var previous_ability_tier: int = int(_progression.get_ability_tier(upgrade_id)) if upgrade_id in ProgressionScript.ABILITY_SLOTS else 0
 	var state: Dictionary = _progression.apply_pick(upgrade_id, amount)
 	if state[&"kind"] == &"ability":
 		_sync_ability_progression()
@@ -350,7 +384,13 @@ func _on_upgrade_selected(upgrade_id: StringName, forced_amount := 0) -> void:
 	_run_hud.call(&"hide_modal")
 	_run_hud.call(&"set_upgrade_summary", _progression.get_summary())
 	get_tree().paused = false
+	var ability_evolved: bool = state[&"kind"] == &"ability" and int(state[&"tier"]) > previous_ability_tier
 	var announcement := "UNLOCKED" if state[&"kind"] == &"ability" and int(state[&"rank"]) <= amount else String(upgrade_id).to_upper()
+	if ability_evolved:
+		announcement = "%s EVOLVED / TIER %d" % [_progression.get_ability_title(upgrade_id), int(state[&"tier"])]
+	if _pending_basic_attack_tier > 0:
+		announcement = "BASIC ATTACK EVOLVED / TIER %d" % _pending_basic_attack_tier if not ability_evolved else "BASIC + %s EVOLVED" % _progression.get_ability_title(upgrade_id)
+		_pending_basic_attack_tier = 0
 	_hero_hud.call(&"announce", "DOUBLE %s" % announcement if amount > 1 else announcement)
 	call_deferred(&"_try_level_up")
 
@@ -358,12 +398,14 @@ func _on_upgrade_selected(upgrade_id: StringName, forced_amount := 0) -> void:
 func _sync_ability_progression() -> void:
 	if not is_instance_valid(_player) or not _player.has_method(&"set_survivor_ability_progress"):
 		return
+	if _player.has_method(&"set_survivor_basic_attack_progress"):
+		_player.call(&"set_survivor_basic_attack_progress", _progression.get_basic_attack_tier(), _progression.get_basic_attack_power_multiplier())
 	for slot: StringName in ProgressionScript.ABILITY_SLOTS:
 		_player.call(
 			&"set_survivor_ability_progress",
 			slot,
 			_progression.get_rank(slot),
-			_progression.get_tier(),
+			_progression.get_ability_tier(slot),
 			_progression.get_ability_power_multiplier(slot),
 			_progression.get_ability_cooldown_multiplier(slot)
 		)

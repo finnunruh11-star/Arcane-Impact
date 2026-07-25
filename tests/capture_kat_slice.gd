@@ -16,6 +16,7 @@ func _capture() -> void:
 
 	var player: KatPlayer = scene.get_node(^"CombatWorld/Kat")
 	var enemies: Array[Node] = get_nodes_in_group(&"enemies")
+	player.set_survivor_mode(false)
 	player.global_position = Vector2(470.0, 360.0)
 	player.aim_direction = Vector2.RIGHT
 	player.set("_using_gamepad", true)
@@ -60,6 +61,22 @@ func _capture() -> void:
 		await physics_frame
 		await process_frame
 	if not _save_capture("kat_communion.png"):
+		quit(1)
+		return
+
+	player.set_survivor_mode(true)
+	player.set_survivor_basic_attack_progress(5, 2.15)
+	for slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
+		player.set_survivor_ability_progress(slot, 20, 5, 3.28, 0.72)
+	player.set("_state", KatPlayer.State.FREE)
+	player.aim_direction = Vector2.RIGHT
+	player.call("_begin_primary", 2)
+	player.call("_begin_primary_active")
+	player.call("_apply_primary_hits")
+	(scene.get_node(^"KatCombatHud") as KatCombatHud).announce("BASIC ATTACK / TIER 5")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("kat_primary_t5.png"):
 		quit(1)
 		return
 
