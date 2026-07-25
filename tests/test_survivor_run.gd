@@ -23,6 +23,7 @@ func _run() -> void:
 	_check_progression_model()
 	_check_adaptive_spawn_pacing()
 	_check_arena_layout()
+	await _check_ranged_enemy_tactics()
 	await _check_tier_behavior_contracts()
 	await _check_primary_evolution_contracts()
 	for hero_index: int in HERO_SCENES.size():
@@ -51,20 +52,101 @@ func _check_arena_layout() -> void:
 
 func _check_adaptive_spawn_pacing() -> void:
 	var pacing := SurvivorRun.new()
-	pacing.set("_run_time", 60.0)
+	pacing.set("_run_time", 40.0)
 	var no_kills: Array[float] = []
 	pacing.set("_recent_kill_times", no_kills)
 	var low_target := pacing.get_spawn_target_count()
 	var low_interval := pacing.get_spawn_interval()
 	var fast_kills: Array[float] = []
 	for kill_index: int in 30:
-		fast_kills.append(30.0 + float(kill_index))
+		fast_kills.append(10.0 + float(kill_index))
 	pacing.set("_recent_kill_times", fast_kills)
 	var high_target := pacing.get_spawn_target_count()
 	var high_interval := pacing.get_spawn_interval()
-	_expect(low_target == SurvivorRun.MIN_ENEMY_TARGET and high_target > low_target, "horde cap grows from recent kill throughput instead of elapsed run time")
-	_expect(low_interval > high_interval and high_target <= SurvivorRun.MAX_ENEMIES, "faster clearing earns faster refills without exceeding the reduced hard cap")
+	_expect(low_target == 1 and high_target == 2, "the opening phase presents one duel and permits only one performance-pressure add")
+	_expect(low_interval > high_interval, "faster clearing shortens refills inside the current phase")
+	pacing.set("_run_time", 520.0)
+	var climax_target := pacing.get_spawn_target_count()
+	_expect(climax_target > high_target and climax_target <= SurvivorRun.MAX_ENEMIES, "elapsed phases raise the population ceiling without exceeding the global cap")
+	var director := SurvivorSpawnDirector.new()
+	var two_ranged: Array[int] = [ReliquaryPursuer.Role.BONE_ARCANIST, ReliquaryPursuer.Role.GRAVE_DEADEYE]
+	_expect(not director.can_spawn_role(20.0, [], ReliquaryPursuer.Role.BONE_ARCANIST), "ranged roles stay locked during the opening duel phase")
+	_expect(not director.can_spawn_role(250.0, two_ranged, ReliquaryPursuer.Role.BONE_ARCANIST), "the pressure phase enforces its two-ranged hard cap")
+	var early_scaling: Dictionary = director.get_scaling(0.0)
+	var late_scaling: Dictionary = director.get_scaling(600.0)
+	_expect(float(late_scaling[&"health"]) > float(early_scaling[&"health"]) and float(late_scaling[&"damage"]) > float(early_scaling[&"damage"]), "enemy durability and damage scale along smooth run-time curves")
 	pacing.free()
+
+
+func _check_ranged_enemy_tactics() -> void:
+	var player := KatPlayer.new()
+	root.add_child(player)
+	await process_frame
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	player.global_position = Vector2(640.0, 360.0)
+
+	var arcanist := ReliquaryPursuer.new()
+	arcanist.configure(player, ReliquaryPursuer.Role.BONE_ARCANIST)
+	arcanist.global_position = Vector2(1340.0, 360.0)
+	root.add_child(arcanist)
+	await process_frame
+	arcanist.process_mode = Node.PROCESS_MODE_DISABLED
+	var far_to_player := player.global_position - arcanist.global_position
+	var approach_direction: Vector2 = arcanist.call(&"_get_chase_direction", far_to_player)
+	_expect(approach_direction.dot(far_to_player.normalized()) > 0.70, "ranged enemies approach decisively before entering their firing band")
+	_expect(not bool(arcanist.call(&"_should_begin_attack", 180.0)) and bool(arcanist.call(&"_should_begin_attack", 360.0)) and not bool(arcanist.call(&"_should_begin_attack", 540.0)), "the Arcanist fires only from a readable engagement band")
+
+	arcanist.global_position = Vector2(1040.0, 360.0)
+	var deadeye := ReliquaryPursuer.new()
+	deadeye.configure(player, ReliquaryPursuer.Role.GRAVE_DEADEYE)
+	deadeye.global_position = arcanist.global_position + Vector2(120.0, 0.0)
+	root.add_child(deadeye)
+	await process_frame
+	deadeye.process_mode = Node.PROCESS_MODE_DISABLED
+	var separation_direction: Vector2 = arcanist.call(&"_get_horde_separation_direction")
+	var away_from_deadeye := (arcanist.global_position - deadeye.global_position).normalized()
+	_expect(separation_direction.dot(away_from_deadeye) > 0.90, "ranged enemies separate before their sprites or firing lanes clump")
+
+	arcanist.set("_state", ReliquaryPursuer.State.RECOVERY)
+	arcanist.set("_state_time", 1.0)
+	arcanist.set("_reposition_remaining", 0.75)
+	var recovery_start := arcanist.global_position
+	arcanist.process_mode = Node.PROCESS_MODE_INHERIT
+	await physics_frame
+	await process_frame
+	arcanist.process_mode = Node.PROCESS_MODE_DISABLED
+	_expect(arcanist.global_position.distance_to(recovery_start) > 0.5, "ranged enemies relocate during post-shot recovery instead of becoming turrets")
+
+	var enemy_sprite := arcanist.get_node(^"EnemySprite") as AnimatedSprite2D
+	arcanist.set("_state", ReliquaryPursuer.State.CHASE)
+	arcanist.set("_telegraph_time", 0.13)
+	arcanist.velocity = Vector2(-arcanist.move_speed, arcanist.move_speed * 0.25)
+	for _animation_step: int in 4:
+		arcanist.call(&"_update_sprite", 0.05)
+	_expect(enemy_sprite.animation == &"run" and enemy_sprite.position.distance_to(Vector2(0.0, -17.0)) > 0.4, "enemy locomotion uses its run cycle with a grounded procedural gait")
+	arcanist.call(&"_begin_windup")
+	arcanist.set("_state_time", arcanist.windup_duration * 0.45)
+	for _animation_step: int in 4:
+		arcanist.call(&"_update_sprite", 0.05)
+	_expect(enemy_sprite.animation == &"idle" and absf(enemy_sprite.scale.x - enemy_sprite.scale.y) > 0.10, "enemy windups have a distinct anticipation pose instead of a static idle frame")
+
+	var orb := EnemyProjectile.new()
+	orb.configure(arcanist, player, Vector2.LEFT, EnemyProjectile.Kind.ARCANE_ORB, 10.0)
+	root.add_child(orb)
+	var bolt := EnemyProjectile.new()
+	bolt.configure(deadeye, player, Vector2.LEFT, EnemyProjectile.Kind.DEADEYE_BOLT, 10.0)
+	root.add_child(bolt)
+	await process_frame
+	orb.process_mode = Node.PROCESS_MODE_DISABLED
+	bolt.process_mode = Node.PROCESS_MODE_DISABLED
+	_expect(orb.get_node_or_null(^"ProjectileVfx") is PixelSheetEffect and bolt.get_node_or_null(^"ProjectileVfx") is PixelSheetEffect, "both ranged attacks use authored animated projectile effects")
+
+	orb.queue_free()
+	bolt.queue_free()
+	arcanist.queue_free()
+	deadeye.queue_free()
+	player.queue_free()
+	await process_frame
 
 
 func _check_progression_model() -> void:
@@ -311,7 +393,7 @@ func _check_hero_run(hero_index: int) -> bool:
 		await process_frame
 	var player := scene.get_player() as Node2D
 	_expect(is_instance_valid(player) and player.name == HERO_NAMES[hero_index], "%s run creates the selected hero" % HERO_NAMES[hero_index])
-	_expect(scene.get_enemy_count() >= 5, "%s run starts under horde pressure" % HERO_NAMES[hero_index])
+	_expect(scene.get_enemy_count() == 1, "%s run opens with one readable duel opponent" % HERO_NAMES[hero_index])
 	var offensive_slots_locked := true
 	for slot: StringName in ProgressionScript.ABILITY_SLOTS:
 		if slot != &"evade":
@@ -380,7 +462,7 @@ func _check_level_up() -> void:
 	scene.grant_test_experience(4)
 	_expect(scene.get_run_level() == 2, "enough Essence advances the run level")
 	_expect(scene.is_level_up_active() and paused, "level-up pauses the active horde")
-	scene.choose_test_upgrade(&"signature")
+	scene.choose_test_upgrade(&"signature", 1)
 	_expect(not scene.is_level_up_active() and not paused, "choosing a boon resumes the run")
 	_expect(scene.get_upgrade_rank(&"signature") == 1 and bool(player.call(&"is_survivor_ability_unlocked", &"signature")), "first host ability pick unlocks rank one on the hero")
 	var scene_progression: SurvivorProgression = scene.get("_progression") as SurvivorProgression

@@ -5,6 +5,7 @@ extends Node2D
 const SurvivorRunHudScript := preload("res://scripts/survivors/survivor_run_hud.gd")
 const ExperienceShardScript := preload("res://scripts/survivors/survivor_experience_shard.gd")
 const ProgressionScript := preload("res://scripts/survivors/survivor_progression.gd")
+const SpawnDirectorScript := preload("res://scripts/survivors/survivor_spawn_director.gd")
 const HERO_SCRIPTS := [
 	preload("res://scripts/characters/kat/kat_player.gd"),
 	preload("res://scripts/characters/sniff/sniff_player.gd"),
@@ -20,13 +21,9 @@ const HUD_SCRIPTS := [
 const HERO_NAMES := ["Kat", "Sniff", "Nad", "Fin"]
 const HERO_INTROS := ["THE TITHE BEGINS", "THE STORM GATHERS", "THE MIND OPENS", "THE HUNT BEGINS"]
 const RUN_DURATION := 600.0
-const STARTING_ENEMIES := 5
-const MIN_ENEMY_TARGET := 6
-const MAX_ENEMIES := 30
+const MAX_ENEMIES := 18
 const KILL_RATE_WINDOW := 30.0
 const KILL_RATE_GRACE := 10.0
-const BASE_SPAWN_RATE := 0.20
-const KILL_RATE_SPAWN_SCALE := 1.10
 const BASE_PICKUP_RADIUS := 120.0
 
 @export_range(0, 3, 1) var hero_index := 0
@@ -41,6 +38,7 @@ var _hero_hud: CanvasLayer
 var _run_hud: CanvasLayer
 var _shield_effect: PixelSheetEffect
 var _progression
+var _spawn_director: SurvivorSpawnDirector = SpawnDirectorScript.new()
 var _enemies: Array[ReliquaryPursuer] = []
 var _rng := RandomNumberGenerator.new()
 var _run_time := 0.0
@@ -71,8 +69,9 @@ func _ready() -> void:
 	_build_world()
 	_build_presentation()
 	_build_player_and_huds()
-	for _enemy_index: int in STARTING_ENEMIES:
+	for _enemy_index: int in get_spawn_target_count():
 		_spawn_enemy()
+	_spawn_timer = get_spawn_interval()
 	_update_huds()
 	_hero_hud.call(&"announce", HERO_INTROS[hero_index])
 	print("Arcane Impact Survivors run ready for %s." % HERO_NAMES[hero_index])
@@ -131,12 +130,11 @@ func get_recent_kill_rate() -> float:
 
 
 func get_spawn_target_count() -> int:
-	return mini(MAX_ENEMIES, MIN_ENEMY_TARGET + ceili(get_recent_kill_rate() * 12.0))
+	return _spawn_director.get_target_count(_run_time, get_recent_kill_rate())
 
 
 func get_spawn_interval() -> float:
-	var spawn_rate := BASE_SPAWN_RATE + get_recent_kill_rate() * KILL_RATE_SPAWN_SCALE
-	return clampf(1.0 / spawn_rate, 0.28, 5.0)
+	return _spawn_director.get_spawn_interval(_run_time, get_recent_kill_rate())
 
 
 func is_level_up_active() -> bool:
@@ -246,12 +244,16 @@ func _refresh_enemies() -> void:
 
 
 func _tick_spawner(delta: float) -> void:
-	_spawn_timer -= delta
 	var target_count := get_spawn_target_count()
-	if _spawn_timer > 0.0 or _enemies.size() >= target_count:
+	if _enemies.size() >= target_count:
 		return
-	_spawn_enemy()
-	_spawn_timer = get_spawn_interval()
+	_spawn_timer -= delta
+	if _spawn_timer > 0.0:
+		return
+	if _spawn_enemy():
+		_spawn_timer = get_spawn_interval()
+	else:
+		_spawn_timer = 0.25
 
 
 func _prune_recent_kills() -> void:
@@ -260,21 +262,24 @@ func _prune_recent_kills() -> void:
 		_recent_kill_times.pop_front()
 
 
-func _spawn_enemy() -> void:
+func _spawn_enemy() -> bool:
 	if not is_instance_valid(_player):
-		return
+		return false
+	var active_roles: Array[int] = []
+	for active_enemy: ReliquaryPursuer in _enemies:
+		active_roles.append(active_enemy.get_role())
+	var variant := _spawn_director.choose_role(_run_time, active_roles, _rng)
+	if variant < 0:
+		return false
 	var enemy := ReliquaryPursuer.new()
-	var variant := (_kills + _enemies.size()) % ReliquaryPursuer.ROLE_COUNT
 	enemy.configure(_player, variant)
-	var health_scale := 1.0 + _run_time / 210.0
-	var damage_scale := 1.0 + _run_time / 360.0
-	var speed_scale := 1.0 + minf(0.18, _run_time / 2400.0)
-	enemy.max_health *= health_scale
+	var scaling: Dictionary = _spawn_director.get_scaling(_run_time)
+	enemy.max_health *= float(scaling[&"health"])
 	enemy.health = enemy.max_health
-	enemy.max_resolve *= health_scale
+	enemy.max_resolve *= float(scaling[&"resolve"])
 	enemy.resolve = enemy.max_resolve
-	enemy.attack_damage *= damage_scale
-	enemy.move_speed *= speed_scale
+	enemy.attack_damage *= float(scaling[&"damage"])
+	enemy.move_speed *= float(scaling[&"speed"])
 	enemy.global_position = _random_edge_position()
 	_world.add_child(enemy)
 	enemy.attack_connected.connect(_impact_director.enemy_attack_impact)
@@ -283,6 +288,7 @@ func _spawn_enemy() -> void:
 		enemy.audio_requested.connect(_impact_director.play_audio)
 	enemy.defeated.connect(_on_enemy_defeated)
 	_enemies.append(enemy)
+	return true
 
 
 func _random_edge_position() -> Vector2:

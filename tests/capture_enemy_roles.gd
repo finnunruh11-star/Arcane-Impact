@@ -49,11 +49,38 @@ func _capture() -> void:
 	for enemy: ReliquaryPursuer in roles:
 		enemy.call("_begin_windup")
 		enemy.set("_state_time", enemy.windup_duration * 0.42)
+		for _pose_step: int in 5:
+			enemy.call("_update_sprite", 0.05)
 		enemy.queue_redraw()
 	roles[ReliquaryPursuer.Role.WARCALLER].set("_support_pulse_time", 0.36)
 	roles[ReliquaryPursuer.Role.WARCALLER].queue_redraw()
 	await process_frame
 	if not _save_capture("enemy_attack_telegraphs.png"):
+		quit(1)
+		return
+
+	for enemy: ReliquaryPursuer in roles:
+		enemy.set("_state", ReliquaryPursuer.State.ACTIVE)
+		enemy.set("_state_time", 0.06)
+		enemy.velocity = enemy.get_facing_direction() * enemy.move_speed
+		for _pose_step: int in 5:
+			enemy.call("_update_sprite", 0.05)
+		enemy.queue_redraw()
+	roles[ReliquaryPursuer.Role.WARCALLER].set("_support_pulse_time", 0.52)
+	roles[ReliquaryPursuer.Role.WARCALLER].queue_redraw()
+	var orb := EnemyProjectile.new()
+	orb.configure(roles[ReliquaryPursuer.Role.BONE_ARCANIST], player, roles[ReliquaryPursuer.Role.BONE_ARCANIST].get_facing_direction(), EnemyProjectile.Kind.ARCANE_ORB, 10.0)
+	world.add_child(orb)
+	orb.global_position = roles[ReliquaryPursuer.Role.BONE_ARCANIST].global_position + orb.get("_direction") * 66.0
+	orb.set("_speed", 0.0)
+	var bolt := EnemyProjectile.new()
+	bolt.configure(roles[ReliquaryPursuer.Role.GRAVE_DEADEYE], player, roles[ReliquaryPursuer.Role.GRAVE_DEADEYE].get_facing_direction(), EnemyProjectile.Kind.DEADEYE_BOLT, 10.0)
+	world.add_child(bolt)
+	bolt.global_position = roles[ReliquaryPursuer.Role.GRAVE_DEADEYE].global_position + bolt.get("_direction") * 72.0
+	bolt.set("_speed", 0.0)
+	for _effect_frame: int in 5:
+		await process_frame
+	if not _save_capture("enemy_action_poses.png"):
 		quit(1)
 		return
 

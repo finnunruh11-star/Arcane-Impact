@@ -58,9 +58,11 @@ All four slices include:
 
 - manually aimed primary attacks and player-controlled active skills;
 - a scrolling 2560-by-1560 arena with solid reliquary ruins and camera follow;
-- six animated enemy roles spanning melee, tank, rushdown, ranged, and support;
-- a kill-rate-adaptive horde capped at 30 with local anti-overlap steering;
-- collision-matched slam, charge, projectile-lane, and support telegraphs;
+- six state-animated enemy roles spanning melee, tank, rushdown, ranged, and support;
+- a six-phase, threat-budgeted horde that opens with individual duels and rises
+    to a hard cap of 18, with adaptive refills and separate ranged/support caps;
+- tactical ranged engagement bands, post-shot relocation, formation spacing,
+    and collision-matched slam, charge, projectile-lane, and support telegraphs;
 - Arcane Essence pickups, six-choice levels, ranked abilities, five behavior tiers,
     six stacking attributes, critical hits, double boons, a run timer, and kill count;
 - sprite-sheet VFX, layered synthesized SFX, hit-stop, camera trauma, flash,

@@ -37,6 +37,19 @@ const BLOODRUNNER_CHARGE_SPEED := 430.0
 const BLOODRUNNER_HITBOX_REACH := 58.0
 const WARCALLER_PULSE_RADIUS := 340.0
 const HORDE_SEPARATION_RADIUS := 76.0
+const RANGED_SEPARATION_RADIUS := 184.0
+const RANGED_BODY_SEPARATION_RADIUS := 112.0
+const SPRITE_BASE_POSITION := Vector2(0.0, -17.0)
+const ROLE_ACCENTS := [
+	Color("e39a55"),
+	Color("d9c36f"),
+	Color("ef526f"),
+	Color("68b9ff"),
+	Color("7ee081"),
+	Color("d69cff"),
+]
+const THREAT_COLOR := Color("ff654f")
+const THREAT_HIGHLIGHT := Color("ffd07a")
 const ROLE_SPRITES := [
 	{&"idle": preload("res://assets/enemies/orc_raider_idle.png"), &"run": preload("res://assets/enemies/orc_raider_run.png")},
 	{&"idle": preload("res://assets/enemies/orc_warrior_idle.png"), &"run": preload("res://assets/enemies/orc_warrior_run.png")},
@@ -63,6 +76,7 @@ var _facing := Vector2.LEFT
 var _attack_area: Area2D
 var _attack_shape: CollisionShape2D
 var _sprite: AnimatedSprite2D
+var _sprite_base_scale := Vector2.ONE * 2.25
 var _attack_hit := false
 var _knockback_velocity := Vector2.ZERO
 var _hit_flash := 0.0
@@ -78,11 +92,16 @@ var _pierce_marks := 0
 var _pierce_mark_remaining := 0.0
 var _death_timer := 0.0
 var _telegraph_time := 0.0
+var _telegraph_reach := ATTACK_REACH
 var _avoidance_direction := Vector2.ZERO
 var _avoidance_time := 0.0
 var _support_boost_remaining := 0.0
 var _support_pulse_time := 0.0
 var _attack_lockout := 0.0
+var _tactical_angle := 0.0
+var _orbit_direction := 1.0
+var _reposition_remaining := 0.0
+var _death_lean := 1.0
 
 
 func configure(player: Node2D, variant: int) -> void:
@@ -177,6 +196,11 @@ func _ready() -> void:
 	_attack_shape.position = Vector2(ATTACK_REACH * 0.5, 0.0)
 	_attack_area.add_child(_attack_shape)
 	_attack_lockout = 0.55 + 0.14 * float((int(get_instance_id()) + _variant * 3) % 8)
+	if _is_ranged_role() and is_instance_valid(_player):
+		var away_from_player := global_position - _player.global_position
+		_tactical_angle = away_from_player.angle() if not away_from_player.is_zero_approx() else 0.0
+		_orbit_direction = -1.0 if get_instance_id() % 2 == 0 else 1.0
+		_tactical_angle += _orbit_direction * (0.28 + 0.07 * float(get_instance_id() % 4))
 	stats_changed.emit()
 	queue_redraw()
 
@@ -191,8 +215,9 @@ func _build_sprite() -> void:
 	_sprite.name = "EnemySprite"
 	_sprite.sprite_frames = sprite_frames
 	_sprite.animation = &"idle"
-	_sprite.position = Vector2(0.0, -17.0)
-	_sprite.scale = Vector2.ONE * (2.45 if _variant == Role.BULWARK else 2.25)
+	_sprite_base_scale = Vector2.ONE * (2.45 if _variant == Role.BULWARK else 2.25)
+	_sprite.position = SPRITE_BASE_POSITION
+	_sprite.scale = _sprite_base_scale
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_sprite.play()
 	add_child(_sprite)
@@ -217,6 +242,7 @@ func _physics_process(delta: float) -> void:
 	_support_boost_remaining = maxf(0.0, _support_boost_remaining - delta)
 	_support_pulse_time = maxf(0.0, _support_pulse_time - delta)
 	_attack_lockout = maxf(0.0, _attack_lockout - delta)
+	_reposition_remaining = maxf(0.0, _reposition_remaining - delta)
 	if _state == State.DEAD:
 		_update_death(delta)
 		queue_redraw()
@@ -239,7 +265,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var to_player := _player.global_position - global_position
-	if _state == State.CHASE and not to_player.is_zero_approx():
+	if (_state == State.CHASE or (_state == State.RECOVERY and _is_ranged_role())) and not to_player.is_zero_approx():
 		_facing = to_player.normalized()
 	_avoidance_time = maxf(0.0, _avoidance_time - delta)
 	match _state:
@@ -269,7 +295,11 @@ func _physics_process(delta: float) -> void:
 				_state_time = _get_recovery_duration()
 				_state = State.RECOVERY
 		State.RECOVERY:
-			velocity = _knockback_velocity * 0.35
+			if _is_ranged_role() and _reposition_remaining > 0.0:
+				var reposition_direction := _get_chase_direction(to_player)
+				velocity = reposition_direction * move_speed * 0.78 * _slow_scale + _knockback_velocity * 0.35
+			else:
+				velocity = _knockback_velocity * 0.35
 			_state_time -= delta
 			if _state_time <= 0.0:
 				_attack_lockout = 0.35 + 0.13 * float((int(get_instance_id()) + _variant) % 6)
@@ -293,7 +323,7 @@ func _physics_process(delta: float) -> void:
 			_avoidance_time = 0.52
 	_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, delta * 1250.0)
 	_clamp_to_arena()
-	_update_sprite()
+	_update_sprite(delta)
 	queue_redraw()
 
 
@@ -301,6 +331,8 @@ func _get_chase_direction(to_player: Vector2) -> Vector2:
 	var desired_direction := _facing
 	if _avoidance_time > 0.0:
 		desired_direction = (_facing * 0.38 + _avoidance_direction).normalized()
+	elif _is_ranged_role():
+		desired_direction = _get_ranged_tactical_direction(to_player)
 	else:
 		var distance := to_player.length()
 		var preferred_min := 0.0
@@ -315,15 +347,9 @@ func _get_chase_direction(to_player: Vector2) -> Vector2:
 			Role.BLOODRUNNER:
 				preferred_min = 220.0
 				preferred_max = 320.0
-			Role.BONE_ARCANIST:
-				preferred_min = 320.0
-				preferred_max = 490.0
 			Role.WARCALLER:
 				preferred_min = 360.0
 				preferred_max = 530.0
-			Role.GRAVE_DEADEYE:
-				preferred_min = 390.0
-				preferred_max = 560.0
 		if preferred_max > 0.0:
 			if distance < preferred_min:
 				desired_direction = -_facing
@@ -333,8 +359,40 @@ func _get_chase_direction(to_player: Vector2) -> Vector2:
 	var separation := _get_horde_separation_direction()
 	if separation.is_zero_approx():
 		return desired_direction
-	var blended := desired_direction + separation * 0.90
+	var separation_weight := 1.45 if _is_ranged_role() else 0.90
+	var blended := desired_direction + separation * separation_weight
 	return separation if blended.is_zero_approx() else blended.normalized()
+
+
+func _get_ranged_tactical_direction(to_player: Vector2) -> Vector2:
+	if to_player.is_zero_approx():
+		return Vector2.from_angle(_tactical_angle)
+	var distance := to_player.length()
+	var toward_player := to_player / distance
+	var orbit_direction := toward_player.orthogonal() * _orbit_direction
+	var preferred_range := _get_ranged_preferred_range()
+	var preferred_distance := (preferred_range.x + preferred_range.y) * 0.5
+	var moving_slot_angle := _tactical_angle + _telegraph_time * 0.10 * _orbit_direction
+	var slot_position := _player.global_position + Vector2.from_angle(moving_slot_angle) * preferred_distance
+	var to_slot := slot_position - global_position
+	var slot_direction := to_slot.normalized() if not to_slot.is_zero_approx() else orbit_direction
+	if distance > preferred_range.y + 120.0:
+		return (toward_player * 0.90 + slot_direction * 0.28).normalized()
+	if distance > preferred_range.y:
+		return (toward_player * 0.72 + slot_direction * 0.48).normalized()
+	if distance < preferred_range.x:
+		return (-toward_player * 0.82 + orbit_direction * 0.56).normalized()
+	var slot_weight := 0.82 if _reposition_remaining > 0.0 else 0.56
+	var orbit_weight := 0.78 if _reposition_remaining > 0.0 else 0.42
+	return (slot_direction * slot_weight + orbit_direction * orbit_weight).normalized()
+
+
+func _get_ranged_preferred_range() -> Vector2:
+	return Vector2(280.0, 430.0) if _variant == Role.BONE_ARCANIST else Vector2(350.0, 510.0)
+
+
+func _is_ranged_role() -> bool:
+	return _variant == Role.BONE_ARCANIST or _variant == Role.GRAVE_DEADEYE
 
 
 func _get_horde_separation_direction() -> Vector2:
@@ -347,12 +405,18 @@ func _get_horde_separation_direction() -> Vector2:
 			continue
 		var offset := global_position - other.global_position
 		var distance := offset.length()
-		if distance >= HORDE_SEPARATION_RADIUS:
+		var separation_radius := HORDE_SEPARATION_RADIUS
+		if _is_ranged_role():
+			separation_radius = RANGED_SEPARATION_RADIUS if other._is_ranged_role() else RANGED_BODY_SEPARATION_RADIUS
+		if distance >= separation_radius:
 			continue
 		if distance < 0.01:
-			offset = Vector2.RIGHT.rotated(float(get_instance_id() % 8) * PI * 0.25)
+			var lower_id := mini(get_instance_id(), other.get_instance_id())
+			offset = Vector2.from_angle(float((lower_id * 37) % 360) * PI / 180.0)
+			if get_instance_id() > other.get_instance_id():
+				offset = -offset
 			distance = 0.01
-		separation += offset.normalized() * (1.0 - distance / HORDE_SEPARATION_RADIUS)
+		separation += offset.normalized() * (1.0 - distance / separation_radius)
 	return separation.normalized() if not separation.is_zero_approx() else Vector2.ZERO
 
 
@@ -365,27 +429,83 @@ func _should_begin_attack(distance: float) -> bool:
 		Role.BLOODRUNNER:
 			return distance <= BLOODRUNNER_CHARGE_DISTANCE + BLOODRUNNER_HITBOX_REACH
 		Role.BONE_ARCANIST:
-			return distance <= 510.0
+			return distance >= 235.0 and distance <= 475.0
 		Role.WARCALLER:
 			return distance <= 570.0
 		Role.GRAVE_DEADEYE:
-			return distance <= 590.0
+			return distance >= 310.0 and distance <= 545.0
 	return false
 
 
-func _update_sprite() -> void:
+func _update_sprite(delta: float) -> void:
 	if not is_instance_valid(_sprite):
 		return
-	var desired_animation := &"run" if _state == State.CHASE and velocity.length_squared() > 400.0 else &"idle"
+	var moving_state := _state == State.CHASE or (_state == State.RECOVERY and _is_ranged_role() and _reposition_remaining > 0.0)
+	var moving := moving_state and velocity.length_squared() > 400.0
+	var desired_animation := &"run" if moving else &"idle"
 	if _sprite.animation != desired_animation:
 		_sprite.play(desired_animation)
+	_sprite.speed_scale = clampf(velocity.length() / maxf(1.0, move_speed), 0.78, 1.35) if moving else 0.88
 	_sprite.flip_h = _facing.x < 0.0
+	var target_position := SPRITE_BASE_POSITION
+	var target_rotation := 0.0
+	var target_scale := _sprite_base_scale
+	var gait_phase := _telegraph_time * (9.0 + minf(4.0, velocity.length() / 70.0))
+	match _state:
+		State.CHASE:
+			if moving:
+				var gait := sin(gait_phase)
+				target_position.y -= absf(gait) * 1.8
+				target_position.x += gait * 0.7
+				target_rotation = clampf(velocity.y / maxf(1.0, move_speed), -1.0, 1.0) * 0.035
+				target_scale *= Vector2(1.0 + gait * 0.018, 1.0 - gait * 0.018)
+		State.WINDUP:
+			var windup_ratio := 1.0 - clampf(_state_time / maxf(0.01, windup_duration), 0.0, 1.0)
+			var anticipation := sin(windup_ratio * PI * 0.5)
+			target_position -= _facing * (2.0 + anticipation * 4.5)
+			target_position.y -= anticipation * 1.5
+			target_rotation = _facing.y * 0.065 * anticipation
+			target_scale *= Vector2(1.0 - anticipation * 0.055, 1.0 + anticipation * 0.055)
+		State.ACTIVE:
+			var active_duration := BLOODRUNNER_CHARGE_DISTANCE / BLOODRUNNER_CHARGE_SPEED if _variant == Role.BLOODRUNNER else 0.12
+			var active_ratio := 1.0 - clampf(_state_time / active_duration, 0.0, 1.0)
+			var action_curve := sin(active_ratio * PI)
+			target_position += _facing * (5.0 + action_curve * 5.0)
+			target_rotation = -_facing.y * 0.075 * action_curve
+			target_scale *= Vector2(1.0 + action_curve * 0.10, 1.0 - action_curve * 0.075)
+		State.RECOVERY:
+			if moving:
+				var recovery_gait := sin(gait_phase)
+				target_position.y -= absf(recovery_gait) * 1.4
+				target_rotation = clampf(velocity.y / maxf(1.0, move_speed), -1.0, 1.0) * 0.03
+			else:
+				var settle_ratio := clampf(_state_time / maxf(0.01, _get_recovery_duration()), 0.0, 1.0)
+				target_position -= _facing * sin(settle_ratio * PI) * 2.0
+				target_rotation = _facing.y * sin(settle_ratio * PI) * 0.025
+		State.STAGGER:
+			var stagger_wave := sin(_telegraph_time * 34.0)
+			target_position.x += stagger_wave * 3.0
+			target_rotation = stagger_wave * 0.07
+			target_scale *= Vector2(1.06, 0.94)
+		State.DEAD:
+			pass
+	var blend := clampf(1.0 - exp(-maxf(0.0, delta) * 18.0), 0.0, 1.0)
+	_sprite.position = _sprite.position.lerp(target_position, blend)
+	_sprite.rotation = lerp_angle(_sprite.rotation, target_rotation, blend)
+	_sprite.scale = _sprite.scale.lerp(target_scale, blend)
 	_sprite.modulate = Color.WHITE.lerp(Color("fff2b8"), _hit_flash)
 
 
 func _begin_windup() -> void:
 	_state = State.WINDUP
 	_state_time = windup_duration
+	_telegraph_reach = ATTACK_REACH
+	if is_instance_valid(_player):
+		var target_distance := global_position.distance_to(_player.global_position)
+		if _variant == Role.BONE_ARCANIST:
+			_telegraph_reach = clampf(target_distance, 235.0, 475.0)
+		elif _variant == Role.GRAVE_DEADEYE:
+			_telegraph_reach = clampf(target_distance, 310.0, 545.0)
 	_configure_attack_shape()
 	_attack_area.rotation = _facing.angle()
 	audio_requested.emit(&"enemy_windup", float(_variant) / float(ROLE_COUNT - 1))
@@ -415,6 +535,9 @@ func _begin_active() -> void:
 	_attack_hit = false
 	_attack_area.rotation = _facing.angle()
 	_attack_area.monitoring = _variant in [Role.RAIDER, Role.BULWARK, Role.BLOODRUNNER]
+	if _is_ranged_role():
+		_reposition_remaining = 1.45 if _variant == Role.BONE_ARCANIST else 1.70
+		_tactical_angle += _orbit_direction * (0.62 + 0.08 * float(get_instance_id() % 4))
 	match _variant:
 		Role.BONE_ARCANIST:
 			_spawn_projectile(EnemyProjectile.Kind.ARCANE_ORB)
@@ -628,6 +751,7 @@ func _begin_death() -> void:
 		return
 	_state = State.DEAD
 	_death_timer = 0.72
+	_death_lean = -1.0 if get_instance_id() % 2 == 0 else 1.0
 	_attack_area.monitoring = false
 	collision_layer = 0
 	collision_mask = 0
@@ -638,9 +762,13 @@ func _begin_death() -> void:
 
 func _update_death(delta: float) -> void:
 	_death_timer -= delta
-	rotation += delta * 2.8
-	scale = Vector2.ONE * clampf(_death_timer / 0.72, 0.05, 1.0)
-	modulate.a = clampf(_death_timer / 0.50, 0.0, 1.0)
+	var remaining_ratio := clampf(_death_timer / 0.72, 0.0, 1.0)
+	var death_progress := 1.0 - remaining_ratio
+	rotation = _death_lean * death_progress * 0.16
+	scale = Vector2(1.0 + sin(death_progress * PI) * 0.10, maxf(0.08, 1.0 - death_progress * 0.92))
+	modulate.a = clampf(_death_timer / 0.42, 0.0, 1.0)
+	if is_instance_valid(_sprite):
+		_sprite.position = SPRITE_BASE_POSITION + Vector2(0.0, death_progress * 9.0)
 	if _death_timer <= 0.0:
 		queue_free()
 
@@ -700,18 +828,32 @@ func get_facing_direction() -> Vector2:
 
 
 func _draw() -> void:
-	draw_set_transform(Vector2(0.0, 25.0), 0.0, Vector2(1.3, 0.38))
-	draw_circle(Vector2.ZERO, 35.0 if _variant == Role.BULWARK else 29.0, Color(0.0, 0.0, 0.0, 0.35))
+	var movement_ratio := clampf(velocity.length() / maxf(1.0, move_speed), 0.0, 1.0)
+	draw_set_transform(Vector2(0.0, 25.0), 0.0, Vector2(1.3 + movement_ratio * 0.10, 0.38 - movement_ratio * 0.04))
+	draw_circle(Vector2.ZERO, 35.0 if _variant == Role.BULWARK else 29.0, Color(0.0, 0.0, 0.0, 0.31))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if _state == State.DEAD:
+		return
 
-	var accent_colors := [Color("e39a55"), Color("d9c36f"), Color("ef526f"), Color("68b9ff"), Color("7ee081"), Color("d69cff")]
+	var accent: Color = ROLE_ACCENTS[_variant]
 	var right := _facing.orthogonal()
-	draw_arc(Vector2.ZERO, 39.0 if _variant == Role.BULWARK else 34.0, 0.0, TAU, 28, Color(accent_colors[_variant], 0.38), 2.0, true)
+	var role_radius := 39.0 if _variant == Role.BULWARK else 34.0
+	draw_arc(Vector2(0.0, 5.0), role_radius, 0.18, 1.05, 12, Color(accent, 0.42), 2.2, true)
+	draw_arc(Vector2(0.0, 5.0), role_radius, PI + 0.18, PI + 1.05, 12, Color(accent, 0.42), 2.2, true)
+	if _support_boost_remaining > 0.0:
+		var boost_rotation := _telegraph_time * 1.8
+		draw_arc(Vector2(0.0, 3.0), role_radius + 5.0, boost_rotation, boost_rotation + PI * 0.65, 16, Color("8dff88", 0.50), 2.0, true)
 
 	if _state == State.WINDUP:
 		var windup_ratio := 1.0 - clampf(_state_time / windup_duration, 0.0, 1.0)
-		var telegraph_alpha := clampf(0.035 + windup_ratio * 0.12 + sin(_telegraph_time * 16.0) * 0.015, 0.025, 0.17)
+		var telegraph_alpha := clampf(0.055 + windup_ratio * 0.12, 0.05, 0.18)
 		_draw_role_telegraph(right, windup_ratio, telegraph_alpha)
+		var progress_color := accent if _variant == Role.WARCALLER else THREAT_HIGHLIGHT
+		var progress_start := -PI * 0.5
+		var progress_end := progress_start + TAU * maxf(0.025, windup_ratio)
+		draw_arc(Vector2(0.0, 3.0), role_radius + 6.0, 0.0, TAU, 32, Color(progress_color, 0.14), 2.0, true)
+		draw_arc(Vector2(0.0, 3.0), role_radius + 6.0, progress_start, progress_end, 32, Color(progress_color, 0.86), 3.0, true)
+		draw_circle(Vector2(0.0, 3.0) + Vector2.from_angle(progress_end) * (role_radius + 6.0), 2.6, Color(progress_color, 0.95))
 	if _state == State.ACTIVE:
 		if _variant == Role.BULWARK:
 			draw_arc(Vector2.ZERO, BULWARK_SLAM_RADIUS, 0.0, TAU, 48, Color(1.0, 0.48, 0.28, 0.58), 4.0, true)
@@ -732,39 +874,41 @@ func _draw() -> void:
 		draw_line(Vector2(-29.0, -37.0), Vector2(29.0, -37.0), Color(0.48, 0.92, 1.0, 0.62), 2.0, true)
 	if _mental_focus > 0:
 		for focus_index: int in _mental_focus:
-			draw_circle(Vector2(-16.0 + float(focus_index) * 8.0, -66.0), 3.0, Color("9cf5ff"))
+			draw_circle(Vector2(-16.0 + float(focus_index) * 8.0, -77.0), 3.0, Color("9cf5ff"))
 	if _pierce_marks > 0:
 		for mark_index: int in _pierce_marks:
 			var mark_x := -16.0 + float(mark_index) * 8.0
 			draw_colored_polygon(PackedVector2Array([
-				Vector2(mark_x, -75.0),
-				Vector2(mark_x + 3.5, -70.0),
-				Vector2(mark_x, -65.0),
-				Vector2(mark_x - 3.5, -70.0),
+				Vector2(mark_x, -88.0),
+				Vector2(mark_x + 3.5, -83.0),
+				Vector2(mark_x, -78.0),
+				Vector2(mark_x - 3.5, -83.0),
 			]), Color("f4c95d"))
-	_draw_bar(Vector2(-38.0, -57.0), 76.0, health / max_health, Color("e65b49"))
-	_draw_bar(Vector2(-38.0, -49.0), 76.0, resolve / max_resolve, Color("54d4ce"))
+	_draw_vitals(Vector2(-36.0, -65.0), 72.0, accent)
 
 
 func _draw_role_telegraph(right: Vector2, windup_ratio: float, alpha: float) -> void:
 	match _variant:
 		Role.RAIDER:
-			_draw_lane(right, ATTACK_REACH, ATTACK_HALF_WIDTH, Color(0.95, 0.15, 0.12, alpha))
+			_draw_lane(right, ATTACK_REACH, ATTACK_HALF_WIDTH, Color(THREAT_COLOR, alpha))
 		Role.BULWARK:
-			draw_circle(Vector2.ZERO, BULWARK_SLAM_RADIUS, Color(0.95, 0.15, 0.12, alpha * 0.42))
-			draw_arc(Vector2.ZERO, BULWARK_SLAM_RADIUS, 0.0, TAU, 48, Color(1.0, 0.72, 0.28, 0.30 + windup_ratio * 0.20), 2.0 + windup_ratio, true)
+			draw_circle(Vector2.ZERO, BULWARK_SLAM_RADIUS, Color(THREAT_COLOR, alpha * 0.34))
+			draw_arc(Vector2.ZERO, BULWARK_SLAM_RADIUS, 0.0, TAU, 48, Color(THREAT_HIGHLIGHT, 0.36 + windup_ratio * 0.26), 2.0 + windup_ratio, true)
 		Role.BLOODRUNNER:
-			_draw_lane(right, BLOODRUNNER_CHARGE_DISTANCE + BLOODRUNNER_HITBOX_REACH, 35.0, Color(1.0, 0.08, 0.18, alpha))
+			_draw_lane(right, BLOODRUNNER_CHARGE_DISTANCE + BLOODRUNNER_HITBOX_REACH, 35.0, Color(THREAT_COLOR, alpha))
 		Role.BONE_ARCANIST:
-			_draw_lane(right, 510.0, 16.0, Color(0.26, 0.62, 1.0, alpha * 0.72))
-			draw_circle(_facing * 30.0, 10.0 + windup_ratio * 7.0, Color(0.42, 0.82, 1.0, 0.46))
+			_draw_lane(right, _telegraph_reach, 17.0, Color(THREAT_COLOR, alpha * 0.76))
+			_draw_target_reticle(_facing * _telegraph_reach, 15.0 + windup_ratio * 3.0, Color(ROLE_ACCENTS[_variant], 0.86), windup_ratio)
+			draw_circle(_facing * 30.0, 9.0 + windup_ratio * 7.0, Color(ROLE_ACCENTS[_variant], 0.52))
+			draw_circle(_facing * 30.0, 3.0 + windup_ratio * 3.0, Color(0.90, 0.97, 1.0, 0.88))
 		Role.WARCALLER:
 			var sigil_radius := 42.0 + windup_ratio * 18.0
-			draw_arc(Vector2.ZERO, sigil_radius, -PI * 0.85, PI * 0.85, 24, Color(0.48, 1.0, 0.52, 0.28 + windup_ratio * 0.18), 2.0, true)
+			draw_arc(Vector2.ZERO, sigil_radius, -PI * 0.85, PI * 0.85, 24, Color(0.48, 1.0, 0.52, 0.34 + windup_ratio * 0.22), 2.0, true)
 			draw_line(Vector2(-11.0, 0.0), Vector2(11.0, 0.0), Color(0.65, 1.0, 0.62, 0.58), 3.0, true)
 			draw_line(Vector2(0.0, -11.0), Vector2(0.0, 11.0), Color(0.65, 1.0, 0.62, 0.58), 3.0, true)
 		Role.GRAVE_DEADEYE:
-			_draw_lane(right, 590.0, 10.0, Color(0.78, 0.20, 0.98, alpha * 0.82))
+			_draw_lane(right, _telegraph_reach, 10.0, Color(THREAT_COLOR, alpha * 0.90))
+			_draw_target_reticle(_facing * _telegraph_reach, 12.0 + windup_ratio * 2.0, Color(ROLE_ACCENTS[_variant], 0.92), windup_ratio)
 
 
 func _draw_lane(right: Vector2, reach: float, half_width: float, color: Color) -> void:
@@ -774,10 +918,42 @@ func _draw_lane(right: Vector2, reach: float, half_width: float, color: Color) -
 		_facing * reach - right * half_width,
 		-right * half_width,
 	])
-	draw_colored_polygon(corners, Color(color, color.a * 0.58))
-	draw_polyline(corners + PackedVector2Array([corners[0]]), Color(color, minf(0.24, color.a * 1.65)), 1.25, true)
+	draw_colored_polygon(corners, Color(color, color.a * 0.42))
+	var edge_color := Color(color, minf(0.44, color.a * 2.15))
+	draw_line(corners[0], corners[1], edge_color, 1.6, true)
+	draw_line(corners[3], corners[2], edge_color, 1.6, true)
+	draw_line(corners[1], corners[2], Color(edge_color, edge_color.a * 0.72), 1.2, true)
 
 
-func _draw_bar(at: Vector2, width: float, ratio: float, color: Color) -> void:
-	draw_rect(Rect2(at, Vector2(width, 4.0)), Color(0.02, 0.03, 0.04, 0.86))
-	draw_rect(Rect2(at + Vector2.ONE, Vector2((width - 2.0) * clampf(ratio, 0.0, 1.0), 2.0)), color)
+func _draw_target_reticle(at: Vector2, radius: float, color: Color, progress: float) -> void:
+	var rotation_offset := _telegraph_time * 0.65
+	for quadrant: int in 4:
+		var arc_start := rotation_offset + float(quadrant) * PI * 0.5
+		draw_arc(at, radius, arc_start, arc_start + 0.58, 7, color, 2.0, true)
+	var cross_size := 4.0 + progress * 3.0
+	draw_line(at - Vector2(cross_size, 0.0), at + Vector2(cross_size, 0.0), Color(color, 0.62), 1.2, true)
+	draw_line(at - Vector2(0.0, cross_size), at + Vector2(0.0, cross_size), Color(color, 0.62), 1.2, true)
+	draw_circle(at, 2.0 + progress * 1.5, Color(THREAT_HIGHLIGHT, 0.84))
+
+
+func _draw_vitals(at: Vector2, width: float, accent: Color) -> void:
+	var frame := Rect2(at - Vector2(3.0, 3.0), Vector2(width + 6.0, 14.0))
+	draw_rect(Rect2(frame.position + Vector2(1.5, 2.0), frame.size), Color(0.0, 0.0, 0.0, 0.36))
+	draw_rect(frame, Color(0.018, 0.028, 0.034, 0.92))
+	draw_rect(frame, Color(accent, 0.46), false, 1.0)
+	var health_width := width * clampf(health / maxf(1.0, max_health), 0.0, 1.0)
+	var resolve_width := width * clampf(resolve / maxf(1.0, max_resolve), 0.0, 1.0)
+	draw_rect(Rect2(at, Vector2(width, 5.0)), Color(0.14, 0.06, 0.07, 0.95))
+	if health_width > 0.0:
+		draw_rect(Rect2(at, Vector2(health_width, 5.0)), Color("e65b49"))
+		draw_line(at + Vector2(0.0, 0.5), at + Vector2(health_width, 0.5), Color(1.0, 0.72, 0.62, 0.62), 1.0)
+	draw_rect(Rect2(at + Vector2(0.0, 7.0), Vector2(width, 2.0)), Color(0.04, 0.15, 0.16, 0.95))
+	if resolve_width > 0.0:
+		draw_rect(Rect2(at + Vector2(0.0, 7.0), Vector2(resolve_width, 2.0)), Color("54d4ce"))
+	var pip_center := at + Vector2(-7.0, 4.5)
+	draw_colored_polygon(PackedVector2Array([
+		pip_center + Vector2(0.0, -4.0),
+		pip_center + Vector2(4.0, 0.0),
+		pip_center + Vector2(0.0, 4.0),
+		pip_center + Vector2(-4.0, 0.0),
+	]), accent)

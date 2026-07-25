@@ -36,28 +36,52 @@ control. Other active skills become usable after they are selected during a
 level-up.
 
 Enemies enter continuously from clear positions along all four arena edges.
-The horde target starts at six and responds to the last 30 seconds of kills:
-clearing quickly accelerates reinforcements, while slower clearing allows the
-population to fall instead of forcing an unavoidable pileup. The target never
-exceeds 30. Nearby enemies also steer apart so several roles cannot occupy the
-same point or seal one approach as a single body. Enemy health, damage, and
-speed still rise gradually throughout the ritual. Enemy profiles rotate between:
+The ritual opens with one opponent and advances through six encounter phases.
+Each phase has both a body cap and a threat budget, so durable, ranged, and
+support roles consume more of the encounter than a basic Raider. The target
+responds to kills from the last 30 seconds: clearing quickly can add pressure
+and shorten the next refill delay, but only up to the current phase's hard cap.
+Slower clearing never causes the director to spawn past the base target.
+
+| Phase | Starts | Base / hard cap | Ranged / support cap | Encounter intent |
+| --- | ---: | ---: | ---: | --- |
+| Duel | 00:00 | 1 / 2 | 0 / 0 | One readable melee opponent; a fast clear can add one more |
+| Skirmish | 00:55 | 2 / 3 | 1 / 0 | Introduces Bulwarks and the first Arcanist |
+| Formation | 02:10 | 3 / 5 | 1 / 0 | Adds Deadeyes while preserving a single ranged slot |
+| Pressure | 04:00 | 5 / 8 | 2 / 1 | Unlocks Warcallers and mixed-role formations |
+| Onslaught | 06:00 | 7 / 12 | 3 / 1 | Sustained pressure with stricter threat accounting |
+| Climax | 08:00 | 10 / 18 | 4 / 2 | Full roster, still bounded by role and threat budgets |
+
+Enemy health, Resolve, and damage rise on smooth linear-plus-curve scaling
+throughout the ritual; movement speed gains are capped at 16% so late enemies
+remain readable. Duplicate-role weighting discourages repetitive formations,
+and the director unlocks roles gradually instead of cycling through all six at
+the start. Enemy profiles are:
 
 - **Ashen Raider:** balanced melee pressure with a short rectangular swing.
 - **Iron Bulwark:** the slowest and toughest enemy; winds up a large circular
   ground slam.
 - **Bloodrunner:** a fragile rushdown attacker that marks a long lane before
   charging through it.
-- **Bone Arcanist:** keeps its distance and launches a slow homing blue orb.
+- **Bone Arcanist:** approaches to a medium engagement band, launches a slow
+  homing blue orb, then relocates before its next cast.
 - **Warcaller:** a support enemy whose green pulse heals and empowers nearby
   enemies instead of damaging the hero.
-- **Grave Deadeye:** a ranged skirmisher with a narrow purple aim line and a
-  fast straight projectile.
+- **Grave Deadeye:** approaches to a longer engagement band, locks a narrow aim
+  line, fires a fast straight projectile, then changes position.
 
-Red and amber ground shapes show damaging melee, charge, and slam areas. Blue
-and purple lanes show incoming projectiles; the projectile itself remains
-visible after release. Green circles are beneficial enemy support and do not
-damage the hero. Enemy health is the red bar above the enemy; cyan is Resolve.
+Ranged enemies claim different orbital positions, repel other ranged enemies
+before their sprites overlap, and move during part of their recovery instead of
+acting as stationary turrets. Their simultaneous population is also limited by
+the phase table above.
+
+Red lanes and ground shapes show damaging melee, charge, slam, and projectile
+paths. An amber sweep around the attacker shows windup progress; blue or purple
+charge effects and endpoint reticles identify the incoming projectile. Green
+circles are beneficial enemy support and do not damage the hero. Enemies use
+run, anticipation, attack, recoil, stagger, and collapse poses around their
+authored sprite animations. The framed indicator above each enemy shows health
+in red, Resolve in cyan, and a small role-colored diamond.
 Defeated enemies drop green Arcane Essence shards. Move near a shard to draw it
 in. Filling the Essence bar
 pauses combat and presents six unique choices: three random stats and three
