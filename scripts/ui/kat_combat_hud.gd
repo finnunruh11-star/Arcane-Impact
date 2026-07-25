@@ -7,8 +7,10 @@ var _font: SystemFont
 var _health_bar: ProgressBar
 var _ward_bar: ProgressBar
 var _resolve_bar: ProgressBar
+var _mana_bar: ProgressBar
 var _vitality_bar: ProgressBar
 var _health_value: Label
+var _mana_value: Label
 var _state_label: Label
 var _encounter_label: Label
 var _announcement: Label
@@ -32,7 +34,7 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
-	var identity_panel := _make_panel(Vector2(24.0, 22.0), Vector2(374.0, 164.0), Color(0.025, 0.038, 0.046, 0.94), Color("814253"))
+	var identity_panel := _make_panel(Vector2(24.0, 22.0), Vector2(374.0, 196.0), Color(0.025, 0.038, 0.046, 0.94), Color("814253"))
 	root.add_child(identity_panel)
 	identity_panel.add_child(_make_label("KAT", Vector2(18.0, 12.0), Vector2(74.0, 35.0), 28, Color("f3d7b1")))
 	identity_panel.add_child(_make_label("VAMPIRIC BULWARK", Vector2(92.0, 18.0), Vector2(245.0, 24.0), 13, Color("d06a7c")))
@@ -46,12 +48,17 @@ func _ready() -> void:
 	identity_panel.add_child(_ward_bar)
 	_resolve_bar = _make_bar(Vector2(18.0, 106.0), Vector2(336.0, 7.0), Color("56c9bd"))
 	identity_panel.add_child(_resolve_bar)
-	_vitality_bar = _make_bar(Vector2(18.0, 137.0), Vector2(336.0, 10.0), Color("f0a13d"))
+	_mana_bar = _make_bar(Vector2(18.0, 136.0), Vector2(246.0, 8.0), Color("6f9ee8"))
+	identity_panel.add_child(_mana_bar)
+	_vitality_bar = _make_bar(Vector2(18.0, 172.0), Vector2(336.0, 9.0), Color("f0a13d"))
 	identity_panel.add_child(_vitality_bar)
 	identity_panel.add_child(_make_label("RESOLVE", Vector2(18.0, 88.0), Vector2(80.0, 17.0), 9, Color("829d9b")))
-	identity_panel.add_child(_make_label("TITHE OF LIFE", Vector2(18.0, 117.0), Vector2(120.0, 18.0), 10, Color("bda778")))
+	identity_panel.add_child(_make_label("MANA / SUSTAIN", Vector2(18.0, 117.0), Vector2(130.0, 18.0), 9, Color("91abd7")))
+	identity_panel.add_child(_make_label("TITHE OF LIFE", Vector2(18.0, 151.0), Vector2(120.0, 18.0), 10, Color("bda778")))
 	_health_value = _make_label("340", Vector2(271.0, 46.0), Vector2(82.0, 22.0), 14, Color("f3e8d8"), HORIZONTAL_ALIGNMENT_RIGHT)
 	identity_panel.add_child(_health_value)
+	_mana_value = _make_label("120 / 120", Vector2(266.0, 116.0), Vector2(88.0, 20.0), 11, Color("c8d8f4"), HORIZONTAL_ALIGNMENT_RIGHT)
+	identity_panel.add_child(_mana_value)
 
 	var encounter_panel := _make_panel(Vector2(500.0, 22.0), Vector2(280.0, 50.0), Color(0.025, 0.038, 0.046, 0.90), Color("42666a"))
 	root.add_child(encounter_panel)
@@ -95,9 +102,11 @@ func _process(delta: float) -> void:
 		return
 	_health_bar.value = (_player.health / _player.get_max_health()) * 100.0
 	_ward_bar.value = (_player.ward / KatPlayer.MAX_WARD) * 100.0
-	_resolve_bar.value = (_player.resolve / KatPlayer.MAX_RESOLVE) * 100.0
+	_resolve_bar.value = (_player.resolve / _player.get_max_resolve()) * 100.0
+	_mana_bar.value = (_player.mana / _player.get_max_mana()) * 100.0
 	_vitality_bar.value = (_player.vitality / KatPlayer.MAX_VITALITY) * 100.0
 	_health_value.text = "%d/%d +%d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health())), int(ceil(_player.ward))]
+	_mana_value.text = "%d / %d" % [int(floor(_player.mana)), int(ceil(_player.get_max_mana()))]
 	_state_label.text = _player.get_state_label()
 	_update_slot(&"leech", _player.leech_cooldown, 9.5)
 	_update_slot(&"halo", _player.halo_cooldown, 11.5)
@@ -105,6 +114,14 @@ func _process(delta: float) -> void:
 	_update_slot(&"ultimate", 0.0 if _player.vitality >= KatPlayer.MAX_VITALITY else 1.0, 1.0)
 	_update_slot(&"primary", 0.0, 1.0)
 	_update_slot(&"guard", 0.0, 1.0)
+	if _player.is_leech_choir_active():
+		_set_slot_status(&"leech", "ON  -16 MANA/s", Color("f08aa0"), _mana_bar.value)
+	elif _player.leech_cooldown <= 0.0:
+		_set_slot_status(&"leech", "TOGGLE  16/s", Color("f6d97d"), 100.0)
+	if _player.is_halo_active():
+		_set_slot_status(&"halo", "ON  -22 MANA/s", Color("f08aa0"), _mana_bar.value)
+	elif _player.halo_cooldown <= 0.0:
+		_set_slot_status(&"halo", "TOGGLE  22/s", Color("f6d97d"), 100.0)
 	_apply_progression_status(&"guard", &"signature")
 	_apply_progression_status(&"leech", &"ability_1")
 	_apply_progression_status(&"halo", &"ability_2")
@@ -146,6 +163,13 @@ func _update_slot(slot_id: StringName, remaining: float, maximum: float) -> void
 		progress.value = (1.0 - clampf(remaining / maximum, 0.0, 1.0)) * 100.0
 		status.text = "%.1f" % remaining if maximum > 1.0 else "CHARGE"
 		status.add_theme_color_override(&"font_color", Color("8c9d9b"))
+
+
+func _set_slot_status(slot_id: StringName, text: String, color: Color, progress_value: float) -> void:
+	var data: Dictionary = _slot_data[slot_id]
+	(data[&"status"] as Label).text = text
+	(data[&"status"] as Label).add_theme_color_override(&"font_color", color)
+	(data[&"progress"] as ProgressBar).value = progress_value
 
 
 func _apply_progression_status(display_slot: StringName, progression_slot: StringName) -> void:

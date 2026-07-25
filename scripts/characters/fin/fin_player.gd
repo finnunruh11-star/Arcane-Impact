@@ -3,6 +3,7 @@ extends CharacterBody2D
 
 
 const SurvivorAbilityStateScript := preload("res://scripts/survivors/survivor_ability_state.gd")
+const SurvivorStatStateScript := preload("res://scripts/survivors/survivor_stat_state.gd")
 
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
@@ -45,8 +46,15 @@ enum State {
 
 const MAX_HEALTH := 245.0
 const MAX_RESOLVE := 175.0
+const MAX_MANA := 100.0
 const MAX_WARD := 52.0
 const MOVE_SPEED := 310.0
+const BASE_MANA_REGEN := 10.0
+const ROD_MANA_COST := 6.0
+const MUTIVARG_MANA_COST := 26.0
+const VEIL_MANA_COST := 20.0
+const SHADOW_LUNGE_MANA_COST := 16.0
+const UMBRAL_STEP_MANA_COST := 18.0
 const MAX_PIERCE_MARKS := 5
 const FORM_HOLD_THRESHOLD := 0.24
 const UMBRAL_STEP_DURATION := 1.25
@@ -67,6 +75,7 @@ const ABILITY_2_NAMES := ["SHADOW LUNGE", "SCATTERBOLT", "THROWING DAGGER", "SMO
 
 var health := MAX_HEALTH
 var resolve := MAX_RESOLVE
+var mana := MAX_MANA
 var ward := 0.0
 var aim_direction := Vector2.RIGHT
 var debug_draw_enabled := false
@@ -131,8 +140,8 @@ var _traps: Array[FinShadowTrap] = []
 var _survivor_mode := false
 var _survivor_target: Node2D
 var _survivor_power_multiplier := 1.0
-var _survivor_max_health_multiplier := 1.0
 var _survivor_abilities = SurvivorAbilityStateScript.new()
+var _survivor_stats = SurvivorStatStateScript.new()
 
 
 func _ready() -> void:
@@ -211,15 +220,59 @@ func get_survivor_ability_power_multiplier(slot: StringName) -> float:
 	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
 
 
-func get_max_health() -> float:
-	return MAX_HEALTH * _survivor_max_health_multiplier
-
-
-func apply_survivor_fortitude(amount: float) -> void:
-	var previous_max := get_max_health()
-	_survivor_max_health_multiplier += maxf(0.0, amount)
-	health += get_max_health() - previous_max
+func apply_survivor_stat(stat: StringName, amount: int) -> void:
+	var previous_health := get_max_health()
+	var previous_resolve := get_max_resolve()
+	var previous_mana := get_max_mana()
+	_survivor_stats.add_rank(stat, amount)
+	health += get_max_health() - previous_health
+	resolve += get_max_resolve() - previous_resolve
+	mana += get_max_mana() - previous_mana
 	stats_changed.emit()
+
+
+func get_survivor_stat_rank(stat: StringName) -> int:
+	return _survivor_stats.get_rank(stat)
+
+
+func get_survivor_scaling_multiplier(scaling: StringName) -> float:
+	return _survivor_stats.get_scaling_multiplier(scaling)
+
+
+func get_survivor_critical_chance() -> float:
+	return _survivor_stats.get_critical_chance()
+
+
+func get_survivor_critical_damage() -> float:
+	return _survivor_stats.get_critical_damage()
+
+
+func roll_survivor_critical() -> bool:
+	return randf() < get_survivor_critical_chance()
+
+
+func get_max_health() -> float:
+	return MAX_HEALTH * _survivor_stats.get_health_multiplier()
+
+
+func get_max_resolve() -> float:
+	return MAX_RESOLVE * _survivor_stats.get_resolve_multiplier()
+
+
+func get_max_mana() -> float:
+	return MAX_MANA * _survivor_stats.get_mana_multiplier()
+
+
+func get_mana_regen_per_second() -> float:
+	return BASE_MANA_REGEN * _survivor_stats.get_mana_regen_multiplier()
+
+
+func get_move_speed() -> float:
+	return MOVE_SPEED * _survivor_stats.get_move_speed_multiplier()
+
+
+func get_survivor_health_regen() -> float:
+	return _survivor_stats.get_health_regen()
 
 
 func _survivor_cooldown_delta(delta: float, slot: StringName) -> float:
@@ -267,7 +320,8 @@ func _tick_timers(delta: float) -> void:
 	_smoke_veil_time = maxf(0.0, _smoke_veil_time - delta)
 	_haste_time = maxf(0.0, _haste_time - delta)
 	_brace_time = maxf(0.0, _brace_time - delta)
-	resolve = minf(MAX_RESOLVE, resolve + delta * 5.5)
+	resolve = minf(get_max_resolve(), resolve + delta * 5.5)
+	mana = minf(get_max_mana(), mana + get_mana_regen_per_second() * delta)
 	ward = maxf(0.0, ward - delta * 0.45)
 	_tick_crossbow_reload(delta)
 	_tick_charge_resources(delta)
@@ -339,7 +393,7 @@ func _update_aim() -> void:
 			var target_direction := _survivor_target.global_position - global_position
 			if not target_direction.is_zero_approx():
 				aim_direction = target_direction.normalized()
-		return
+			return
 	var raw_stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
@@ -556,7 +610,7 @@ func _update_movement() -> void:
 		State.SIGNATURE_RECOVERY, State.ABILITY_RECOVERY, State.FORM_SWITCH:
 			state_speed = 0.68
 		State.UMBRAL_STEP:
-			velocity = (_umbral_direction if _active_action == &"umbral_retrace" else move_input.normalized()) * MOVE_SPEED * _umbral_speed_multiplier
+			velocity = (_umbral_direction if _active_action == &"umbral_retrace" else move_input.normalized()) * get_move_speed() * _umbral_speed_multiplier
 			_knockback_velocity = Vector2.ZERO
 			return
 		State.SHADOW_DASH:
@@ -566,7 +620,7 @@ func _update_movement() -> void:
 			state_speed = 0.0
 	if _form_wheel_open:
 		state_speed *= 0.34
-	velocity = move_input * MOVE_SPEED * form_speed * state_speed + _knockback_velocity
+	velocity = move_input * get_move_speed() * form_speed * state_speed + _knockback_velocity
 	_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, 44.0)
 
 
@@ -590,6 +644,8 @@ func _begin_primary(stage: int) -> void:
 			_state_time = 0.075
 			audio_requested.emit(&"fin_bow_draw", 0.20)
 		Form.ARTIFICER:
+			if not _spend_mana(ROD_MANA_COST):
+				return
 			_active_action = &"rod_primary"
 			_state_time = 0.085
 			audio_requested.emit(&"fin_rod", 0.24)
@@ -644,7 +700,7 @@ func _begin_signature() -> void:
 			_signature_charge_duration = 0.96
 			audio_requested.emit(&"fin_bow_draw", 0.52)
 		Form.ARTIFICER:
-			if mutivarg_cooldown > 0.0:
+			if mutivarg_cooldown > 0.0 or not _spend_mana(MUTIVARG_MANA_COST):
 				return
 			_active_action = &"mutivarg_field"
 			_signature_charge_duration = 1.02
@@ -842,7 +898,7 @@ func _use_ability_2() -> void:
 
 
 func _cast_umbral_veil() -> void:
-	if veil_cooldown > 0.0:
+	if veil_cooldown > 0.0 or not _spend_mana(VEIL_MANA_COST):
 		return
 	veil_cooldown = 8.0
 	var tier := get_survivor_ability_tier(&"ability_1")
@@ -857,7 +913,7 @@ func _cast_umbral_veil() -> void:
 
 
 func _begin_shadow_lunge() -> void:
-	if shadow_lunge_cooldown > 0.0:
+	if shadow_lunge_cooldown > 0.0 or not _spend_mana(SHADOW_LUNGE_MANA_COST):
 		return
 	shadow_lunge_cooldown = 4.2
 	_dash_direction = _movement_or_aim_direction()
@@ -971,7 +1027,7 @@ func use_potion(potion: int) -> bool:
 			announcement_requested.emit("MENDING DRAUGHT")
 		Potion.QUICKSILVER:
 			_haste_time = [2.4, 3.8, 5.2, 6.8, 8.2][tier - 1] as float
-			resolve = minf(MAX_RESOLVE, resolve + ([12.0, 18.0, 24.0, 34.0, 46.0][tier - 1] as float))
+			resolve = minf(get_max_resolve(), resolve + ([12.0, 18.0, 24.0, 34.0, 46.0][tier - 1] as float))
 			announcement_requested.emit("QUICKSILVER TONIC")
 		Potion.SHADE:
 			_veil_time = maxf(_veil_time, [1.1, 1.9, 2.8, 3.8, 5.0][tier - 1] as float)
@@ -1011,6 +1067,8 @@ func _begin_umbral_step() -> void:
 	var retracing := tier >= 5 and _umbral_retrace_available
 	if umbral_step_cooldown > 0.0 and not retracing:
 		return
+	if not retracing and not _spend_mana(UMBRAL_STEP_MANA_COST):
+		return
 	if retracing:
 		_active_action = &"umbral_retrace"
 		_umbral_retrace_available = false
@@ -1018,7 +1076,7 @@ func _begin_umbral_step() -> void:
 		var to_origin := _umbral_origin - global_position
 		_umbral_direction = to_origin.normalized() if not to_origin.is_zero_approx() else -aim_direction
 		_umbral_speed_multiplier = 2.35
-		_state_time = maxf(0.12, to_origin.length() / (MOVE_SPEED * _umbral_speed_multiplier))
+		_state_time = maxf(0.12, to_origin.length() / (get_move_speed() * _umbral_speed_multiplier))
 	else:
 		umbral_step_cooldown = UMBRAL_STEP_COOLDOWN
 		_state_time = [0.52, 0.84, UMBRAL_STEP_DURATION, 1.45, 1.65][tier - 1] as float
@@ -1110,7 +1168,7 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 	_knockback_velocity += incoming_direction.normalized() * packet.knockback_force
 	audio_requested.emit(&"fin_hurt", clampf(packet.health_damage / 38.0, 0.2, 1.0))
 	if resolve <= 0.0:
-		resolve = MAX_RESOLVE * 0.43
+		resolve = get_max_resolve() * 0.43
 		_attack_area.monitoring = false
 		collision_mask = 2 | 4
 		_state_time = 0.48
@@ -1131,6 +1189,21 @@ func heal(amount: float) -> void:
 		return
 	health = minf(get_max_health(), health + amount)
 	stats_changed.emit()
+
+
+func restore_mana(amount: float) -> void:
+	if amount <= 0.0 or _state == State.DEAD:
+		return
+	mana = minf(get_max_mana(), mana + amount)
+	stats_changed.emit()
+
+
+func _spend_mana(cost: float) -> bool:
+	if mana + 0.001 < cost:
+		return false
+	mana = maxf(0.0, mana - cost)
+	stats_changed.emit()
+	return true
 
 
 func restore_supplies() -> void:

@@ -8,7 +8,9 @@ var _identity_panel: Panel
 var _health_bar: ProgressBar
 var _resolve_bar: ProgressBar
 var _ward_bar: ProgressBar
+var _mana_bar: ProgressBar
 var _health_value: Label
+var _mana_value: Label
 var _state_label: Label
 var _form_label: Label
 var _form_subtitle: Label
@@ -42,7 +44,7 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
-	_identity_panel = _make_panel(Vector2(24.0, 20.0), Vector2(446.0, 208.0), Color(0.012, 0.028, 0.031, 0.96), Color("4b817d"))
+	_identity_panel = _make_panel(Vector2(24.0, 20.0), Vector2(446.0, 234.0), Color(0.012, 0.028, 0.031, 0.96), Color("4b817d"))
 	root.add_child(_identity_panel)
 	_identity_panel.add_child(_make_label("FIN", Vector2(18.0, 8.0), Vector2(72.0, 38.0), 28, Color("f1e6c3")))
 	_identity_panel.add_child(_make_label("SHADOW ARTIFICER", Vector2(88.0, 15.0), Vector2(172.0, 24.0), 12, Color("81cabc")))
@@ -67,16 +69,22 @@ func _ready() -> void:
 	_ward_bar = _make_bar(Vector2(221.0, 128.0), Vector2(205.0, 7.0), Color("d9bd58"))
 	_identity_panel.add_child(_ward_bar)
 
-	_mark_label = _make_label("PIERCE 0", Vector2(18.0, 140.0), Vector2(96.0, 18.0), 9, Color("f0ce68"))
+	_identity_panel.add_child(_make_label("MANA", Vector2(18.0, 140.0), Vector2(60.0, 16.0), 8, Color("8da9d7")))
+	_mana_bar = _make_bar(Vector2(18.0, 158.0), Vector2(300.0, 7.0), Color("6d91dc"))
+	_identity_panel.add_child(_mana_bar)
+	_mana_value = _make_label("100 / 100", Vector2(326.0, 138.0), Vector2(100.0, 20.0), 10, Color("c7d7f2"), HORIZONTAL_ALIGNMENT_RIGHT)
+	_identity_panel.add_child(_mana_value)
+
+	_mark_label = _make_label("PIERCE 0", Vector2(18.0, 169.0), Vector2(96.0, 18.0), 9, Color("f0ce68"))
 	_identity_panel.add_child(_mark_label)
-	_resource_label = _make_label("VEIL READY", Vector2(116.0, 140.0), Vector2(208.0, 18.0), 9, Color("9ed6ca"), HORIZONTAL_ALIGNMENT_CENTER)
+	_resource_label = _make_label("VEIL READY", Vector2(116.0, 169.0), Vector2(208.0, 18.0), 9, Color("9ed6ca"), HORIZONTAL_ALIGNMENT_CENTER)
 	_identity_panel.add_child(_resource_label)
-	_concealment_label = _make_label("EXPOSED", Vector2(328.0, 140.0), Vector2(98.0, 18.0), 9, Color("768e8c"), HORIZONTAL_ALIGNMENT_RIGHT)
+	_concealment_label = _make_label("EXPOSED", Vector2(328.0, 169.0), Vector2(98.0, 18.0), 9, Color("768e8c"), HORIZONTAL_ALIGNMENT_RIGHT)
 	_identity_panel.add_child(_concealment_label)
 
 	for form_index: int in FinPlayer.Form.size():
 		var tab := _make_panel(
-			Vector2(18.0 + float(form_index) * 103.0, 166.0),
+			Vector2(18.0 + float(form_index) * 103.0, 195.0),
 			Vector2(96.0, 25.0),
 			Color(0.02, 0.04, 0.043, 0.96),
 			Color("355b59")
@@ -137,9 +145,11 @@ func _process(delta: float) -> void:
 	_health_flash = maxf(0.0, _health_flash - delta * 3.5)
 	_health_bar.modulate = Color.WHITE.lerp(Color(1.0, 0.38, 0.22), _health_flash * 0.52)
 	_health_bar.value = (_player.health / _player.get_max_health()) * 100.0
-	_resolve_bar.value = (_player.resolve / FinPlayer.MAX_RESOLVE) * 100.0
+	_resolve_bar.value = (_player.resolve / _player.get_max_resolve()) * 100.0
 	_ward_bar.value = (_player.ward / FinPlayer.MAX_WARD) * 100.0
+	_mana_bar.value = (_player.mana / _player.get_max_mana()) * 100.0
 	_health_value.text = "%d / %d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health()))]
+	_mana_value.text = "%d / %d" % [int(floor(_player.mana)), int(ceil(_player.get_max_mana()))]
 	_state_label.text = _player.get_state_label()
 	_mark_label.text = "PIERCE %d" % _player.get_total_pierce_marks()
 	_concealment_label.text = "CONCEALED" if _player.is_concealed() else "EXPOSED"
@@ -179,8 +189,8 @@ func _update_ability_slots() -> void:
 		FinPlayer.Form.NIGHTBLADE:
 			_update_slot(&"primary", 0.0, 1.0, "3-HIT COMBO")
 			_update_slot(&"signature", 0.0, 1.0, "%d MARKS" % _player.get_total_pierce_marks())
-			_update_slot(&"ability_1", _player.veil_cooldown, 8.0, "READY")
-			_update_slot(&"ability_2", _player.shadow_lunge_cooldown, 4.2, "READY")
+			_update_slot(&"ability_1", _player.veil_cooldown, 8.0, "20 MANA")
+			_update_slot(&"ability_2", _player.shadow_lunge_cooldown, 4.2, "16 MANA")
 		FinPlayer.Form.ARBALEST:
 			_update_slot(&"primary", 0.0 if _player.is_crossbow_loaded() else _player.get_crossbow_reload(), FinPlayer.CROSSBOW_RELOAD_TIME, "LOADED")
 			_update_slot(&"signature", 0.0 if _player.is_crossbow_loaded() else _player.get_crossbow_reload(), 3.45, "%d MARKS" % _player.get_total_pierce_marks())
@@ -192,11 +202,11 @@ func _update_ability_slots() -> void:
 			_update_slot(&"ability_1", _player.shadow_bind_cooldown, 0.72, "%d/%d SET" % [_player.get_trap_count(), trap_capacity])
 			_update_slot(&"ability_2", 0.0 if _player.get_throwing_dagger_count() > 0 else FinPlayer.DAGGER_CHARGE_TIME, FinPlayer.DAGGER_CHARGE_TIME, "%d/%d" % [_player.get_throwing_dagger_count(), dagger_capacity])
 		FinPlayer.Form.ARTIFICER:
-			_update_slot(&"primary", 0.0, 1.0, "RESOLVE TAP")
-			_update_slot(&"signature", _player.mutivarg_cooldown, 8.0, "READY")
+			_update_slot(&"primary", 0.0, 1.0, "6 MANA")
+			_update_slot(&"signature", _player.mutivarg_cooldown, 8.0, "26 MANA")
 			_update_slot(&"ability_1", 0.0 if _player.get_potion_count() > 0 else FinPlayer.POTION_CHARGE_TIME, FinPlayer.POTION_CHARGE_TIME, "%d/%d %s" % [_player.get_potion_count(), potion_capacity, _player.get_last_potion_label()])
 			_update_slot(&"ability_2", 0.0 if _player.get_smoke_bomb_count() > 0 else FinPlayer.SMOKE_CHARGE_TIME, FinPlayer.SMOKE_CHARGE_TIME, "%d/%d" % [_player.get_smoke_bomb_count(), smoke_capacity])
-	_update_slot(&"step", _player.umbral_step_cooldown, FinPlayer.UMBRAL_STEP_COOLDOWN, "ESCAPE")
+	_update_slot(&"step", _player.umbral_step_cooldown, FinPlayer.UMBRAL_STEP_COOLDOWN, "18 MANA")
 	_update_slot(&"ultimate", 0.0, 1.0, "4 FORMS")
 	if _player.get_signature_charge_ratio() > 0.0:
 		var data: Dictionary = _slot_data[&"signature"]

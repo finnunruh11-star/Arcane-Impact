@@ -3,15 +3,12 @@ extends Area2D
 
 
 const RADIUS := 188.0
-const DURATION := 5.2
 const PULSE_INTERVAL := 0.58
 
 var _owner: KatPlayer
 var _tier := 3
 var _radius := RADIUS
-var _duration := DURATION
 var _pulse_interval := PULSE_INTERVAL
-var _remaining := DURATION
 var _pulse_timer := 0.18
 var _pulse_index := 0
 var _visual_time := 0.0
@@ -21,9 +18,7 @@ func configure(owner: KatPlayer, tier := 3) -> void:
 	_owner = owner
 	_tier = clampi(tier, 1, 5)
 	_radius = [126.0, 158.0, RADIUS, 226.0, 268.0][_tier - 1] as float
-	_duration = [3.0, 4.1, DURATION, 6.2, 7.4][_tier - 1] as float
 	_pulse_interval = [0.82, 0.68, PULSE_INTERVAL, 0.50, 0.40][_tier - 1] as float
-	_remaining = _duration
 
 
 func _ready() -> void:
@@ -44,14 +39,11 @@ func _physics_process(delta: float) -> void:
 	if not is_instance_valid(_owner) or not _owner.is_alive():
 		queue_free()
 		return
-	_remaining -= delta
 	_pulse_timer -= delta
 	_visual_time += delta
 	if _pulse_timer <= 0.0:
 		_pulse_timer += _pulse_interval
 		_pulse()
-	if _remaining <= 0.0:
-		queue_free()
 	queue_redraw()
 
 
@@ -81,7 +73,6 @@ func _pulse() -> void:
 
 
 func _draw() -> void:
-	var life_ratio := clampf(_remaining / _duration, 0.0, 1.0)
 	var pulse := 0.5 + 0.5 * sin(_visual_time * TAU / _pulse_interval)
 	draw_circle(Vector2.ZERO, _radius, Color(0.34, 0.02, 0.12, 0.055 + pulse * 0.035))
 	for ring_index: int in 3:
@@ -93,11 +84,11 @@ func _draw() -> void:
 			start,
 			start + PI * (0.72 + 0.10 * float(ring_index)),
 			36,
-			Color(0.91, 0.19, 0.30, (0.38 - float(ring_index) * 0.08) * life_ratio),
+			Color(0.91, 0.19, 0.30, 0.38 - float(ring_index) * 0.08),
 			3.0,
 			true
 		)
 	for rune_index: int in 8:
 		var angle := _visual_time * -0.42 + TAU * float(rune_index) / 8.0
 		var rune_position := Vector2.from_angle(angle) * (_radius - 30.0)
-		draw_circle(rune_position, 3.0 + pulse * 2.0, Color(1.0, 0.58, 0.42, 0.45 * life_ratio))
+		draw_circle(rune_position, 3.0 + pulse * 2.0, Color(1.0, 0.58, 0.42, 0.45))

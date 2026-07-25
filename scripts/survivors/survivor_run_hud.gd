@@ -2,7 +2,7 @@ class_name SurvivorRunHud
 extends CanvasLayer
 
 
-signal upgrade_selected(upgrade_id: StringName)
+signal upgrade_selected(upgrade_id: StringName, amount: int)
 signal retry_requested
 signal roster_requested
 
@@ -17,6 +17,7 @@ var _xp_label: Label
 var _overlay: Control
 var _modal_title: Label
 var _modal_subtitle: Label
+var _modal_hint: Label
 var _choice_buttons: Array[Button] = []
 var _retry_button: Button
 var _roster_button: Button
@@ -56,6 +57,8 @@ func show_level_up(options: Array[Dictionary]) -> void:
 	_overlay.visible = true
 	_modal_title.text = "LEVEL ASCENDED"
 	_modal_subtitle.text = "Choose one boon for %s" % _hero_name
+	_modal_hint.text = "D-PAD / LEFT STICK: NAVIGATE    A: CONFIRM / SELECT"
+	_modal_hint.visible = true
 	for index: int in _choice_buttons.size():
 		var button := _choice_buttons[index]
 		button.visible = index < _options.size()
@@ -63,6 +66,7 @@ func show_level_up(options: Array[Dictionary]) -> void:
 			continue
 		var option: Dictionary = _options[index]
 		button.text = "%d   %s\n%s" % [index + 1, String(option[&"title"]), String(option[&"description"])]
+		button.modulate = Color(1.0, 0.82, 0.52) if int(option.get(&"amount", 1)) > 1 else Color.WHITE
 	_retry_button.visible = false
 	_roster_button.visible = false
 	if not _choice_buttons.is_empty():
@@ -76,6 +80,7 @@ func show_run_end(victory: bool, run_time: float, kills: int, level: int) -> voi
 	_modal_title.text = "RITUAL SURVIVED" if victory else "THE HORDE CLAIMS YOU"
 	var total_seconds := maxi(0, int(floor(run_time)))
 	_modal_subtitle.text = "%02d:%02d   /   LEVEL %d   /   %d BANISHED" % [total_seconds / 60, total_seconds % 60, level, kills]
+	_modal_hint.visible = false
 	for button: Button in _choice_buttons:
 		button.visible = false
 	_retry_button.visible = true
@@ -94,7 +99,19 @@ func is_modal_open() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not _overlay.visible or not event is InputEventKey or not event.pressed or event.echo:
+	if not _overlay.visible:
+		return
+	if event is InputEventJoypadButton:
+		var joy_button := event as InputEventJoypadButton
+		if not joy_button.pressed or joy_button.button_index != JOY_BUTTON_A:
+			return
+		if _mode == &"upgrade":
+			_confirm_focused_upgrade()
+		elif _mode == &"end":
+			retry_requested.emit()
+		get_viewport().set_input_as_handled()
+		return
+	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key_event := event as InputEventKey
 	if _mode == &"upgrade":
@@ -150,6 +167,8 @@ func _build_modal() -> void:
 	modal.add_child(_modal_title)
 	_modal_subtitle = _make_label("Choose one boon", Vector2(36.0, 62.0), Vector2(1000.0, 28.0), 13, Color("9fb9b4"), HORIZONTAL_ALIGNMENT_CENTER)
 	modal.add_child(_modal_subtitle)
+	_modal_hint = _make_label("D-PAD / LEFT STICK: NAVIGATE    A: CONFIRM / SELECT", Vector2(36.0, 86.0), Vector2(1000.0, 18.0), 11, Color("74e0bb"), HORIZONTAL_ALIGNMENT_CENTER)
+	modal.add_child(_modal_hint)
 	for index: int in 6:
 		var column := index % 2
 		var row := index / 2
@@ -170,7 +189,16 @@ func _build_modal() -> void:
 func _choose_upgrade(index: int) -> void:
 	if _mode != &"upgrade" or index < 0 or index >= _options.size():
 		return
-	upgrade_selected.emit(StringName(_options[index][&"id"]))
+	upgrade_selected.emit(StringName(_options[index][&"id"]), int(_options[index].get(&"amount", 1)))
+
+
+func _confirm_focused_upgrade() -> void:
+	for index: int in mini(_choice_buttons.size(), _options.size()):
+		if _choice_buttons[index].has_focus():
+			_choose_upgrade(index)
+			return
+	if not _options.is_empty():
+		_choose_upgrade(0)
 
 
 func _make_panel(at: Vector2, panel_size: Vector2, fill: Color, border: Color) -> Panel:

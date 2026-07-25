@@ -111,10 +111,10 @@ func _process(delta: float) -> void:
 	_health_flash = maxf(0.0, _health_flash - delta * 3.5)
 	_health_bar.modulate = Color.WHITE.lerp(Color(1.0, 0.37, 0.22), _health_flash * 0.52)
 	_health_bar.value = (_player.health / _player.get_max_health()) * 100.0
-	_resolve_bar.value = (_player.resolve / NadPlayer.MAX_RESOLVE) * 100.0
-	_mana_bar.value = (_player.mana / NadPlayer.MAX_MANA) * 100.0
+	_resolve_bar.value = (_player.resolve / _player.get_max_resolve()) * 100.0
+	_mana_bar.value = (_player.mana / _player.get_max_mana()) * 100.0
 	_health_value.text = "%d / %d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health()))]
-	_mana_value.text = "%d" % int(floor(_player.mana))
+	_mana_value.text = "%d / %d" % [int(floor(_player.mana)), int(ceil(_player.get_max_mana()))]
 	_state_label.text = _player.get_state_label()
 
 	var focus_total := 0
@@ -141,7 +141,7 @@ func _process(delta: float) -> void:
 	_update_slot(&"mantle", 0.0, 1.0, "32 MANA")
 	_update_slot(&"anchor", _player.anchor_cooldown, 8.0, "COLLAPSE" if _player.get_anchor_count() == anchor_capacity else "%d/%d  18 MANA" % [_player.get_anchor_count(), anchor_capacity])
 	_update_slot(&"cascade", _player.cascade_cooldown, 6.5, "24 MANA")
-	_update_slot(&"fold", _player.fold_cooldown, 2.8, "READY")
+	_update_slot(&"fold", _player.fold_cooldown, 2.8, "14 MANA")
 	_update_slot(&"ultimate", _player.ultimate_cooldown, 22.0, "50 MANA")
 	if _player.is_mantle_charging():
 		var data: Dictionary = _slot_data[&"mantle"]

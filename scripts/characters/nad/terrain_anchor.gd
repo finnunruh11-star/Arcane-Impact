@@ -89,7 +89,7 @@ func detonate() -> int:
 			_owner.on_anchor_hit(target, global_position, direction, packet)
 			hit_count += 1
 	if is_instance_valid(_owner):
-		_owner.on_anchor_detonated(global_position, hit_count)
+		_owner.on_anchor_detonated(global_position, hit_count, _tier)
 	_remove_anchor()
 	return hit_count
 
@@ -115,16 +115,36 @@ func _remove_anchor() -> void:
 func _draw() -> void:
 	var life_ratio := get_remaining_ratio()
 	var pulse := 0.5 + 0.5 * sin(_visual_time * 4.8)
-	draw_circle(Vector2.ZERO, _radius, Color(0.08, 0.48, 0.58, 0.045 + pulse * 0.025))
-	draw_arc(Vector2.ZERO, _radius, _visual_time * 0.42, _visual_time * 0.42 + PI * 1.55, 64, Color(0.26, 0.84, 0.91, 0.50 * life_ratio), 3.0, true)
-	draw_arc(Vector2.ZERO, _radius * 0.65 + pulse * 8.0, -_visual_time * 0.68, -_visual_time * 0.68 + PI * 1.22, 48, Color(0.79, 0.86, 0.42, 0.42 * life_ratio), 2.0, true)
+	var void_weight := float(_tier - 1) / 4.0
+	var primary := Color("43d6d8").lerp(Color("d32f92"), void_weight)
+	var secondary := Color("c9dc6b").lerp(Color("7055d9"), void_weight)
+	draw_circle(Vector2.ZERO, _radius, Color(0.025, 0.008, 0.055, (0.04 + pulse * 0.035) * (0.6 + void_weight)))
+	draw_arc(Vector2.ZERO, _radius, _visual_time * 0.42, _visual_time * 0.42 + PI * 1.55, 64, Color(primary, 0.50 * life_ratio), 3.0 + void_weight * 2.0, true)
+	draw_arc(Vector2.ZERO, _radius * 0.65 + pulse * 8.0, -_visual_time * 0.68, -_visual_time * 0.68 + PI * 1.22, 48, Color(secondary, 0.42 * life_ratio), 2.0, true)
+	var tendril_count := maxi(0, _tier - 1) * 2
+	for tendril_index: int in tendril_count:
+		var angle := TAU * float(tendril_index) / float(tendril_count) + _visual_time * (0.18 if tendril_index % 2 == 0 else -0.14)
+		var direction := Vector2.from_angle(angle)
+		var normal := direction.orthogonal()
+		var points := PackedVector2Array()
+		for segment_index: int in 7:
+			var ratio := float(segment_index) / 6.0
+			var curl := sin(_visual_time * 3.0 + ratio * 7.0 + float(tendril_index)) * _radius * 0.09 * ratio
+			points.append(direction * _radius * lerpf(0.16, 0.92, ratio) + normal * curl)
+		draw_polyline(points, Color(primary, (0.24 + 0.30 * void_weight) * life_ratio), 2.0 + 2.0 * void_weight, true)
 	for point_index: int in 6:
 		var angle := _visual_time * -0.33 + TAU * float(point_index) / 6.0
 		var point := Vector2.from_angle(angle) * (_radius * 0.79)
-		draw_circle(point, 5.0, Color(0.45, 0.94, 1.0, (0.52 + pulse * 0.28) * life_ratio))
+		draw_circle(point, 5.0, Color(primary, (0.52 + pulse * 0.28) * life_ratio))
+	if _tier >= 3:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.48))
+		draw_circle(Vector2.ZERO, 27.0 + 5.0 * float(_tier - 3), Color(secondary, 0.72 * life_ratio))
+		draw_circle(Vector2.ZERO, 16.0 + 3.0 * float(_tier - 3), Color(0.018, 0.006, 0.035, 0.96 * life_ratio))
+		draw_circle(Vector2(-4.0, -3.0), 4.0, Color(primary, 0.92 * life_ratio))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_colored_polygon(PackedVector2Array([
 		Vector2(0.0, -24.0), Vector2(15.0, 0.0), Vector2(0.0, 24.0), Vector2(-15.0, 0.0),
 	]), Color(0.08, 0.18, 0.24, 0.94))
 	draw_polyline(PackedVector2Array([
 		Vector2(0.0, -24.0), Vector2(15.0, 0.0), Vector2(0.0, 24.0), Vector2(-15.0, 0.0), Vector2(0.0, -24.0),
-	]), Color("8eefff"), 3.0, true)
+	]), primary, 3.0, true)

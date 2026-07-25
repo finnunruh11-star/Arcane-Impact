@@ -6,7 +6,9 @@ var _player: SniffPlayer
 var _font: SystemFont
 var _health_bar: ProgressBar
 var _resolve_bar: ProgressBar
+var _mana_bar: ProgressBar
 var _health_value: Label
+var _mana_value: Label
 var _state_label: Label
 var _encounter_label: Label
 var _announcement: Label
@@ -33,7 +35,7 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
-	var identity_panel := _make_panel(Vector2(24.0, 22.0), Vector2(390.0, 176.0), Color(0.018, 0.038, 0.052, 0.95), Color("297f91"))
+	var identity_panel := _make_panel(Vector2(24.0, 22.0), Vector2(390.0, 208.0), Color(0.018, 0.038, 0.052, 0.95), Color("297f91"))
 	root.add_child(identity_panel)
 	identity_panel.add_child(_make_label("SNIFF", Vector2(18.0, 10.0), Vector2(92.0, 38.0), 28, Color("fff0a5")))
 	identity_panel.add_child(_make_label("VOLTAIC GAMBLER", Vector2(110.0, 17.0), Vector2(190.0, 24.0), 13, Color("5edbf4")))
@@ -49,9 +51,14 @@ func _ready() -> void:
 	identity_panel.add_child(_make_label("RESOLVE", Vector2(18.0, 88.0), Vector2(80.0, 17.0), 9, Color("86aeb7")))
 	_resolve_bar = _make_bar(Vector2(18.0, 106.0), Vector2(352.0, 7.0), Color("4bd7e6"))
 	identity_panel.add_child(_resolve_bar)
-	identity_panel.add_child(_make_label("BLESSING OF ROARING THUNDER", Vector2(18.0, 119.0), Vector2(224.0, 18.0), 10, Color("d8c96b")))
+	identity_panel.add_child(_make_label("MANA / STORM HUNGER", Vector2(18.0, 118.0), Vector2(184.0, 17.0), 9, Color("98b8e8")))
+	_mana_bar = _make_bar(Vector2(18.0, 136.0), Vector2(252.0, 9.0), Color("678ee8"))
+	identity_panel.add_child(_mana_bar)
+	_mana_value = _make_label("130 / 130", Vector2(280.0, 116.0), Vector2(90.0, 22.0), 11, Color("c8d8fa"), HORIZONTAL_ALIGNMENT_RIGHT)
+	identity_panel.add_child(_mana_value)
+	identity_panel.add_child(_make_label("BLESSING OF ROARING THUNDER", Vector2(18.0, 151.0), Vector2(224.0, 18.0), 10, Color("d8c96b")))
 	for stack_index: int in SniffPlayer.MAX_BLESSING:
-		var pip := _make_panel(Vector2(18.0 + float(stack_index) * 35.0, 145.0), Vector2(29.0, 13.0), Color("101e26"), Color("29515b"))
+		var pip := _make_panel(Vector2(18.0 + float(stack_index) * 35.0, 177.0), Vector2(29.0, 13.0), Color("101e26"), Color("29515b"))
 		identity_panel.add_child(pip)
 		_blessing_pips.append(pip)
 
@@ -101,8 +108,10 @@ func _process(delta: float) -> void:
 	_health_flash = maxf(0.0, _health_flash - delta * 3.5)
 	_health_bar.modulate = Color.WHITE.lerp(Color(1.0, 0.36, 0.22), _health_flash * 0.52)
 	_health_bar.value = (_player.health / _player.get_max_health()) * 100.0
-	_resolve_bar.value = (_player.resolve / SniffPlayer.MAX_RESOLVE) * 100.0
+	_resolve_bar.value = (_player.resolve / _player.get_max_resolve()) * 100.0
+	_mana_bar.value = (_player.mana / _player.get_max_mana()) * 100.0
 	_health_value.text = "%d / %d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health()))]
+	_mana_value.text = "%d / %d" % [int(floor(_player.mana)), int(ceil(_player.get_max_mana()))]
 	_state_label.text = _player.get_state_label()
 	for stack_index: int in _blessing_pips.size():
 		var active := stack_index < _player.blessing
@@ -110,12 +119,12 @@ func _process(delta: float) -> void:
 		style.bg_color = Color("f1d649") if active else Color("101e26")
 		style.border_color = Color("bfffff") if active else Color("29515b")
 
-	_update_slot(&"primary", 0.0, 1.0, "BUILD")
-	_update_slot(&"dash", 0.0, 1.0, "SPEND 0-3")
-	_update_slot(&"blessing", _player.blessing_cooldown, 8.0, "8% HP")
-	_update_slot(&"surge", _player.surge_cooldown, 7.5, "10% HP")
-	_update_slot(&"step", _player.flashstep_cooldown, SniffPlayer.FLASHSTEP_COOLDOWN, "READY")
-	_update_slot(&"ultimate", _player.ultimate_cooldown, 20.0, "15% HP")
+	_update_slot(&"primary", 0.0, 1.0, "6 MANA")
+	_update_slot(&"dash", 0.0, 1.0, "24M / 0-3 BLESS")
+	_update_slot(&"blessing", _player.blessing_cooldown, 8.0, "30M + HP")
+	_update_slot(&"surge", _player.surge_cooldown, 7.5, "38M + HP")
+	_update_slot(&"step", _player.flashstep_cooldown, SniffPlayer.FLASHSTEP_COOLDOWN, "16 MANA")
+	_update_slot(&"ultimate", _player.ultimate_cooldown, 20.0, "70M + HP")
 	if _player.is_dash_charging():
 		var data: Dictionary = _slot_data[&"dash"]
 		var progress := data[&"progress"] as ProgressBar

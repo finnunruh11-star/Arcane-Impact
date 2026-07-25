@@ -44,6 +44,16 @@ func _run_soak() -> void:
 				_place_target(nearest, player, 116.0)
 				player.call("_begin_primary", 2)
 				player.call("_resolve_primary")
+			45:
+				_reset_action_state(player)
+				_place_target(nearest, player, 82.0)
+				player.call("_begin_primary", 0)
+				player.call("_resolve_primary")
+			65:
+				_reset_action_state(player)
+				_place_target(nearest, player, 82.0)
+				player.call("_begin_primary", 1)
+				player.call("_resolve_primary")
 			75:
 				_reset_action_state(player)
 				player.call("_cast_umbral_veil")

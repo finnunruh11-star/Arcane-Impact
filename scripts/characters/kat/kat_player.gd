@@ -3,6 +3,7 @@ extends CharacterBody2D
 
 
 const SurvivorAbilityStateScript := preload("res://scripts/survivors/survivor_ability_state.gd")
+const SurvivorStatStateScript := preload("res://scripts/survivors/survivor_stat_state.gd")
 
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
@@ -33,9 +34,14 @@ enum State {
 
 const MAX_HEALTH := 340.0
 const MAX_RESOLVE := 210.0
+const MAX_MANA := 120.0
 const MAX_VITALITY := 100.0
 const MAX_WARD := 95.0
 const MOVE_SPEED := 284.0
+const BASE_MANA_REGEN := 10.0
+const LEECH_MANA_DRAIN := 16.0
+const HALO_MANA_DRAIN := 22.0
+const COMMUNION_MANA_COST := 55.0
 const INPUT_BUFFER_DURATION := 0.12
 const PERFECT_GUARD_WINDOW := 0.19
 
@@ -47,6 +53,7 @@ const PRIMARY_HALF_WIDTH := [42.0, 47.0, 66.0]
 
 var health := MAX_HEALTH
 var resolve := MAX_RESOLVE
+var mana := MAX_MANA
 var vitality := 35.0
 var ward := 0.0
 var aim_direction := Vector2.RIGHT
@@ -76,8 +83,8 @@ var _halo: MourningHalo
 var _survivor_mode := false
 var _survivor_target: Node2D
 var _survivor_power_multiplier := 1.0
-var _survivor_max_health_multiplier := 1.0
 var _survivor_abilities = SurvivorAbilityStateScript.new()
+var _survivor_stats = SurvivorStatStateScript.new()
 var _communion_regen_time := 0.0
 var _last_stand_unlocked := false
 var _last_stand_available := false
@@ -163,15 +170,59 @@ func get_survivor_ability_power_multiplier(slot: StringName) -> float:
 	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
 
 
-func get_max_health() -> float:
-	return MAX_HEALTH * _survivor_max_health_multiplier
-
-
-func apply_survivor_fortitude(amount: float) -> void:
-	var previous_max := get_max_health()
-	_survivor_max_health_multiplier += maxf(0.0, amount)
-	health += get_max_health() - previous_max
+func apply_survivor_stat(stat: StringName, amount: int) -> void:
+	var previous_health := get_max_health()
+	var previous_resolve := get_max_resolve()
+	var previous_mana := get_max_mana()
+	_survivor_stats.add_rank(stat, amount)
+	health += get_max_health() - previous_health
+	resolve += get_max_resolve() - previous_resolve
+	mana += get_max_mana() - previous_mana
 	stats_changed.emit()
+
+
+func get_survivor_stat_rank(stat: StringName) -> int:
+	return _survivor_stats.get_rank(stat)
+
+
+func get_survivor_scaling_multiplier(scaling: StringName) -> float:
+	return _survivor_stats.get_scaling_multiplier(scaling)
+
+
+func get_survivor_critical_chance() -> float:
+	return _survivor_stats.get_critical_chance()
+
+
+func get_survivor_critical_damage() -> float:
+	return _survivor_stats.get_critical_damage()
+
+
+func roll_survivor_critical() -> bool:
+	return randf() < get_survivor_critical_chance()
+
+
+func get_max_health() -> float:
+	return MAX_HEALTH * _survivor_stats.get_health_multiplier()
+
+
+func get_max_resolve() -> float:
+	return MAX_RESOLVE * _survivor_stats.get_resolve_multiplier()
+
+
+func get_max_mana() -> float:
+	return MAX_MANA * _survivor_stats.get_mana_multiplier()
+
+
+func get_mana_regen_per_second() -> float:
+	return BASE_MANA_REGEN * _survivor_stats.get_mana_regen_multiplier()
+
+
+func get_move_speed() -> float:
+	return MOVE_SPEED * _survivor_stats.get_move_speed_multiplier()
+
+
+func get_survivor_health_regen() -> float:
+	return _survivor_stats.get_health_regen()
 
 
 func _survivor_cooldown_delta(delta: float, slot: StringName) -> float:
@@ -208,11 +259,29 @@ func _tick_cooldowns(delta: float) -> void:
 	leech_cooldown = maxf(0.0, leech_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
 	halo_cooldown = maxf(0.0, halo_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
 	march_cooldown = maxf(0.0, march_cooldown - _survivor_cooldown_delta(delta, &"evade"))
-	resolve = minf(MAX_RESOLVE, resolve + delta * 5.0)
+	resolve = minf(get_max_resolve(), resolve + delta * 5.0)
 	if _communion_regen_time > 0.0:
 		_communion_regen_time = maxf(0.0, _communion_regen_time - delta)
 		heal(delta * 3.2)
 	_motes = _motes.filter(func(mote: LeechMote) -> bool: return is_instance_valid(mote))
+	_tick_sustained_mana(delta)
+
+
+func _tick_sustained_mana(delta: float) -> void:
+	mana = minf(get_max_mana(), mana + get_mana_regen_per_second() * delta)
+	var drain_per_second := 0.0
+	if is_leech_choir_active():
+		drain_per_second += LEECH_MANA_DRAIN
+	if is_halo_active():
+		drain_per_second += HALO_MANA_DRAIN
+	if drain_per_second <= 0.0:
+		return
+	mana = maxf(0.0, mana - drain_per_second * delta)
+	if mana > 0.0:
+		return
+	_disable_leech_choir()
+	_disable_mourning_halo()
+	announcement_requested.emit("MANA EXHAUSTED")
 
 
 func _update_buffers(delta: float) -> void:
@@ -229,7 +298,7 @@ func _update_aim() -> void:
 			var target_direction := _survivor_target.global_position - global_position
 			if not target_direction.is_zero_approx():
 				aim_direction = target_direction.normalized()
-		return
+			return
 	var raw_stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
@@ -305,11 +374,11 @@ func _update_state(delta: float) -> void:
 
 
 func _handle_free_inputs() -> void:
-	if Input.is_action_just_pressed(&"ultimate") and is_survivor_ability_unlocked(&"ultimate") and vitality >= MAX_VITALITY:
+	if Input.is_action_just_pressed(&"ultimate") and is_survivor_ability_unlocked(&"ultimate") and vitality >= MAX_VITALITY and mana >= COMMUNION_MANA_COST:
 		_begin_black_communion()
-	elif Input.is_action_just_pressed(&"ability_1") and is_survivor_ability_unlocked(&"ability_1") and leech_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"ability_1") and is_survivor_ability_unlocked(&"ability_1") and (is_leech_choir_active() or leech_cooldown <= 0.0):
 		_cast_leech_choir()
-	elif Input.is_action_just_pressed(&"ability_2") and is_survivor_ability_unlocked(&"ability_2") and halo_cooldown <= 0.0:
+	elif Input.is_action_just_pressed(&"ability_2") and is_survivor_ability_unlocked(&"ability_2") and (is_halo_active() or halo_cooldown <= 0.0):
 		_cast_mourning_halo()
 	elif Input.is_action_just_pressed(&"evade") and is_survivor_ability_unlocked(&"evade") and march_cooldown <= 0.0:
 		_begin_bastion_march()
@@ -360,7 +429,7 @@ func _update_movement() -> void:
 		State.MARCH:
 			velocity = _march_direction * _march_speed
 			return
-	velocity = move_input * MOVE_SPEED * speed_scale + _knockback_velocity
+	velocity = move_input * get_move_speed() * speed_scale + _knockback_velocity
 	_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, 38.0)
 
 
@@ -466,16 +535,25 @@ func _resolve_march_arrival() -> void:
 
 func _cast_leech_choir() -> void:
 	_motes = _motes.filter(func(mote: LeechMote) -> bool: return is_instance_valid(mote))
+	if not _motes.is_empty():
+		_disable_leech_choir()
+		effect_requested.emit(&"kat_curse", global_position, aim_direction, 0.72)
+		audio_requested.emit(&"kat_summon", 0.35)
+		_state_time = 0.12
+		_set_state(State.ABILITY_RECOVERY)
+		return
+	if mana <= 0.0:
+		return
 	var tier := get_survivor_ability_tier(&"ability_1")
 	var maximum_motes := tier
-	var spawn_count := mini(3 if tier >= 5 else 2, maximum_motes - _motes.size())
+	var spawn_count := maximum_motes
 	for spawn_index: int in spawn_count:
 		var mote := LeechMote.new()
 		mote.configure(self, _motes.size())
 		get_parent().add_child(mote)
 		mote.global_position = global_position + Vector2(0.0, -24.0)
 		_motes.append(mote)
-	leech_cooldown = 9.5 if spawn_count > 0 else 2.0
+	leech_cooldown = 9.5
 	effect_requested.emit(&"kat_heal", global_position, aim_direction, 1.12)
 	audio_requested.emit(&"kat_summon", 0.7)
 	_state_time = 0.24
@@ -485,7 +563,14 @@ func _cast_leech_choir() -> void:
 
 func _cast_mourning_halo() -> void:
 	if is_instance_valid(_halo):
-		_halo.queue_free()
+		_disable_mourning_halo()
+		effect_requested.emit(&"kat_curse", global_position, aim_direction, 0.82)
+		audio_requested.emit(&"kat_halo", 0.35)
+		_state_time = 0.12
+		_set_state(State.ABILITY_RECOVERY)
+		return
+	if mana <= 0.0:
+		return
 	_halo = MourningHalo.new()
 	_halo.configure(self, get_survivor_ability_tier(&"ability_2"))
 	add_child(_halo)
@@ -498,6 +583,8 @@ func _cast_mourning_halo() -> void:
 
 
 func _begin_black_communion() -> void:
+	if not _spend_mana(COMMUNION_MANA_COST):
+		return
 	_state_time = 0.62
 	_set_state(State.ULTIMATE_STARTUP)
 	effect_requested.emit(&"kat_curse", global_position, aim_direction, 3.3)
@@ -597,7 +684,7 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 		_last_stand_available = false
 		health = get_max_health() * 0.35
 		ward = MAX_WARD
-		resolve = MAX_RESOLVE
+		resolve = get_max_resolve()
 		vitality = 0.0
 		effect_requested.emit(&"kat_communion", global_position, aim_direction, 2.6)
 		announcement_requested.emit("EVERLASTING OATH")
@@ -605,7 +692,7 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 	_knockback_velocity += incoming_direction.normalized() * packet.knockback_force
 	audio_requested.emit(&"kat_hurt", clampf(packet.health_damage / 40.0, 0.2, 1.0))
 	if resolve <= 0.0 and _state != State.ULTIMATE_STARTUP:
-		resolve = MAX_RESOLVE * 0.45
+		resolve = get_max_resolve() * 0.45
 		shield_visual_changed.emit(false)
 		_attack_area.monitoring = false
 		_state_time = 0.52
@@ -632,6 +719,21 @@ func heal(amount: float) -> void:
 	if excess > 0.0:
 		ward = minf(MAX_WARD, ward + excess)
 	stats_changed.emit()
+
+
+func restore_mana(amount: float) -> void:
+	if amount <= 0.0 or _state == State.DEAD:
+		return
+	mana = minf(get_max_mana(), mana + amount)
+	stats_changed.emit()
+
+
+func _spend_mana(cost: float) -> bool:
+	if mana + 0.001 < cost:
+		return false
+	mana = maxf(0.0, mana - cost)
+	stats_changed.emit()
+	return true
 
 
 func gain_vitality(amount: float) -> void:
@@ -718,8 +820,27 @@ func get_mote_count() -> int:
 	return _motes.size()
 
 
+func is_leech_choir_active() -> bool:
+	return not _motes.is_empty()
+
+
 func is_halo_active() -> bool:
 	return is_instance_valid(_halo)
+
+
+func _disable_leech_choir() -> void:
+	for mote: LeechMote in _motes:
+		if is_instance_valid(mote):
+			mote.queue_free()
+	_motes.clear()
+	stats_changed.emit()
+
+
+func _disable_mourning_halo() -> void:
+	if is_instance_valid(_halo):
+		_halo.queue_free()
+	_halo = null
+	stats_changed.emit()
 
 
 func _draw() -> void:

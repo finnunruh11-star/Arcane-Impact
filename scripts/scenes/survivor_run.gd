@@ -19,10 +19,10 @@ const HUD_SCRIPTS := [
 ]
 const HERO_NAMES := ["Kat", "Sniff", "Nad", "Fin"]
 const HERO_INTROS := ["THE TITHE BEGINS", "THE STORM GATHERS", "THE MIND OPENS", "THE HUNT BEGINS"]
-const BASE_ATTACK_INTERVALS := [0.68, 0.40, 0.64, 0.52]
 const RUN_DURATION := 600.0
 const STARTING_ENEMIES := 5
 const MAX_ENEMIES := 48
+const BASE_PICKUP_RADIUS := 120.0
 
 @export_range(0, 3, 1) var hero_index := 0
 @export var audio_enabled := true
@@ -40,17 +40,13 @@ var _enemies: Array[ReliquaryPursuer] = []
 var _rng := RandomNumberGenerator.new()
 var _run_time := 0.0
 var _spawn_timer := 0.0
-var _auto_attack_timer := 0.0
 var _recovery_timer := 0.0
 var _kills := 0
 var _level := 1
 var _experience := 0
 var _experience_required := 4
-var _power_multiplier := 1.0
-var _attack_interval_multiplier := 1.0
-var _pickup_radius := 120.0
-var _recovery_per_second := 0.0
 var _experience_multiplier := 1.0
+var _pending_upgrade_values: Dictionary = {}
 var _level_up_active := false
 var _run_ended := false
 
@@ -94,7 +90,6 @@ func _process(delta: float) -> void:
 	_run_time = minf(run_duration, _run_time + delta)
 	_refresh_enemies()
 	_tick_spawner(delta)
-	_tick_auto_attack(delta)
 	_tick_recovery(delta)
 	_update_huds()
 	if _run_time >= run_duration:
@@ -134,9 +129,9 @@ func grant_test_experience(amount: int) -> void:
 	_grant_experience(amount)
 
 
-func choose_test_upgrade(upgrade_id: StringName) -> void:
+func choose_test_upgrade(upgrade_id: StringName, amount := 0) -> void:
 	if _level_up_active:
-		_on_upgrade_selected(upgrade_id)
+		_on_upgrade_selected(upgrade_id, amount)
 
 
 func get_upgrade_rank(upgrade_id: StringName) -> int:
@@ -176,7 +171,7 @@ func _build_player_and_huds() -> void:
 	_player.name = HERO_NAMES[hero_index]
 	_player.global_position = Vector2(640.0, 360.0)
 	_player.call(&"set_survivor_mode", true)
-	_player.call(&"set_survivor_power_multiplier", _power_multiplier)
+	_player.call(&"set_survivor_power_multiplier", 1.0)
 	_sync_ability_progression()
 	if _player.has_method(&"set_movement_bounds"):
 		_player.call(&"set_movement_bounds", ArenaBackdrop.PLAYABLE_RECT.grow(-36.0))
@@ -281,45 +276,25 @@ func _random_edge_position() -> Vector2:
 	return bounds.position
 
 
-func _tick_auto_attack(delta: float) -> void:
-	_auto_attack_timer -= delta
-	if _auto_attack_timer > 0.0:
-		return
-	var target := _nearest_enemy()
-	if not is_instance_valid(target):
-		_auto_attack_timer = 0.08
-		return
-	var started := bool(_player.call(&"try_survivor_primary", target))
-	_auto_attack_timer = float(BASE_ATTACK_INTERVALS[hero_index]) * _attack_interval_multiplier if started else 0.06
-
-
-func _nearest_enemy() -> Node2D:
-	var nearest: Node2D
-	var nearest_distance := INF
-	for enemy: ReliquaryPursuer in _enemies:
-		var distance := _player.global_position.distance_squared_to(enemy.global_position)
-		if distance < nearest_distance:
-			nearest = enemy
-			nearest_distance = distance
-	return nearest
-
-
 func _tick_recovery(delta: float) -> void:
-	if _recovery_per_second <= 0.0:
+	if not _player.has_method(&"get_survivor_health_regen"):
+		return
+	var recovery_per_second := float(_player.call(&"get_survivor_health_regen"))
+	if recovery_per_second <= 0.0:
 		return
 	_recovery_timer += delta
 	if _recovery_timer < 1.0:
 		return
 	var elapsed_ticks := floori(_recovery_timer)
 	_recovery_timer -= float(elapsed_ticks)
-	_player.call(&"heal", _recovery_per_second * float(elapsed_ticks))
+	_player.call(&"heal", recovery_per_second * float(elapsed_ticks))
 
 
 func _on_enemy_defeated(enemy: ReliquaryPursuer) -> void:
 	_kills += 1
 	var shard = ExperienceShardScript.new()
 	shard.name = "ArcaneEssence"
-	shard.configure(_player, 1 + int(floor(_run_time / 180.0)), _pickup_radius)
+	shard.configure(_player, 1 + int(floor(_run_time / 180.0)), BASE_PICKUP_RADIUS)
 	shard.global_position = enemy.global_position
 	shard.add_to_group(&"survivor_pickups")
 	shard.collected.connect(_on_experience_collected)
@@ -351,38 +326,32 @@ func _try_level_up() -> void:
 
 
 func _roll_upgrade_options() -> Array[Dictionary]:
-	return _progression.roll_options(_rng, 6)
+	var options: Array[Dictionary] = _progression.roll_options(_rng, 6)
+	_pending_upgrade_values.clear()
+	for option: Dictionary in options:
+		_pending_upgrade_values[option[&"id"]] = int(option.get(&"amount", 1))
+	return options
 
 
-func _on_upgrade_selected(upgrade_id: StringName) -> void:
+func _on_upgrade_selected(upgrade_id: StringName, forced_amount := 0) -> void:
 	if not _level_up_active:
 		return
-	var state: Dictionary = _progression.apply_pick(upgrade_id)
+	var amount := forced_amount if forced_amount > 0 else int(_pending_upgrade_values.get(upgrade_id, 1))
+	var state: Dictionary = _progression.apply_pick(upgrade_id, amount)
 	if state[&"kind"] == &"ability":
 		_sync_ability_progression()
+	elif _player.has_method(&"apply_survivor_stat"):
+		_player.call(&"apply_survivor_stat", upgrade_id, amount)
 	match upgrade_id:
-		&"force":
-			_power_multiplier += 0.12
-			_player.call(&"set_survivor_power_multiplier", _power_multiplier)
-		&"haste":
-			_attack_interval_multiplier = maxf(0.42, _attack_interval_multiplier * 0.90)
-		&"fortitude":
-			if _player.has_method(&"apply_survivor_fortitude"):
-				_player.call(&"apply_survivor_fortitude", 0.10)
-		&"magnet":
-			_pickup_radius += 60.0
-			for pickup: Node in get_tree().get_nodes_in_group(&"survivor_pickups"):
-				pickup.call(&"set_pickup_radius", _pickup_radius)
-		&"recovery":
-			_recovery_per_second += 1.0
-			_player.call(&"heal", 12.0)
-		&"wisdom":
-			_experience_multiplier += 0.15
+		&"intelligence":
+			_experience_multiplier += 0.05 * float(amount)
+	_pending_upgrade_values.clear()
 	_level_up_active = false
 	_run_hud.call(&"hide_modal")
 	_run_hud.call(&"set_upgrade_summary", _progression.get_summary())
 	get_tree().paused = false
-	_hero_hud.call(&"announce", "UNLOCKED" if state[&"kind"] == &"ability" and state[&"rank"] == 1 else String(upgrade_id).to_upper())
+	var announcement := "UNLOCKED" if state[&"kind"] == &"ability" and int(state[&"rank"]) <= amount else String(upgrade_id).to_upper()
+	_hero_hud.call(&"announce", "DOUBLE %s" % announcement if amount > 1 else announcement)
 	call_deferred(&"_try_level_up")
 
 

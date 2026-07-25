@@ -3,6 +3,7 @@ extends CharacterBody2D
 
 
 const SurvivorAbilityStateScript := preload("res://scripts/survivors/survivor_ability_state.gd")
+const SurvivorStatStateScript := preload("res://scripts/survivors/survivor_stat_state.gd")
 
 signal combat_impact(at: Vector2, direction: Vector2, packet: DamagePacket, intensity: float)
 signal effect_requested(effect_id: StringName, at: Vector2, direction: Vector2, size_scale: float)
@@ -33,8 +34,16 @@ enum State {
 
 const MAX_HEALTH := 245.0
 const MAX_RESOLVE := 138.0
+const MAX_MANA := 130.0
 const MAX_BLESSING := 10
 const MOVE_SPEED := 332.0
+const BASE_MANA_REGEN := 8.5
+const DART_MANA_COST := 6.0
+const DASH_MANA_COST := 24.0
+const BLESSING_MANA_COST := 30.0
+const SURGE_MANA_COST := 38.0
+const FLASHSTEP_MANA_COST := 16.0
+const ANNIHILATION_MANA_COST := 70.0
 const INPUT_BUFFER_DURATION := 0.12
 const DASH_MIN_DISTANCE := 185.0
 const DASH_MAX_DISTANCE := 445.0
@@ -45,6 +54,7 @@ const ULTIMATE_RADIUS := 560.0
 
 var health := MAX_HEALTH
 var resolve := MAX_RESOLVE
+var mana := MAX_MANA
 var blessing := 0
 var aim_direction := Vector2.RIGHT
 var debug_draw_enabled := false
@@ -83,8 +93,8 @@ var _has_movement_bounds := false
 var _survivor_mode := false
 var _survivor_target: Node2D
 var _survivor_power_multiplier := 1.0
-var _survivor_max_health_multiplier := 1.0
 var _survivor_abilities = SurvivorAbilityStateScript.new()
+var _survivor_stats = SurvivorStatStateScript.new()
 
 
 func _ready() -> void:
@@ -166,15 +176,59 @@ func get_survivor_ability_power_multiplier(slot: StringName) -> float:
 	return _survivor_abilities.get_power(slot) if _survivor_mode else 1.0
 
 
-func get_max_health() -> float:
-	return MAX_HEALTH * _survivor_max_health_multiplier
-
-
-func apply_survivor_fortitude(amount: float) -> void:
-	var previous_max := get_max_health()
-	_survivor_max_health_multiplier += maxf(0.0, amount)
-	health += get_max_health() - previous_max
+func apply_survivor_stat(stat: StringName, amount: int) -> void:
+	var previous_health := get_max_health()
+	var previous_resolve := get_max_resolve()
+	var previous_mana := get_max_mana()
+	_survivor_stats.add_rank(stat, amount)
+	health += get_max_health() - previous_health
+	resolve += get_max_resolve() - previous_resolve
+	mana += get_max_mana() - previous_mana
 	stats_changed.emit()
+
+
+func get_survivor_stat_rank(stat: StringName) -> int:
+	return _survivor_stats.get_rank(stat)
+
+
+func get_survivor_scaling_multiplier(scaling: StringName) -> float:
+	return _survivor_stats.get_scaling_multiplier(scaling)
+
+
+func get_survivor_critical_chance() -> float:
+	return _survivor_stats.get_critical_chance()
+
+
+func get_survivor_critical_damage() -> float:
+	return _survivor_stats.get_critical_damage()
+
+
+func roll_survivor_critical() -> bool:
+	return _rng.randf() < get_survivor_critical_chance()
+
+
+func get_max_health() -> float:
+	return MAX_HEALTH * _survivor_stats.get_health_multiplier()
+
+
+func get_max_resolve() -> float:
+	return MAX_RESOLVE * _survivor_stats.get_resolve_multiplier()
+
+
+func get_max_mana() -> float:
+	return MAX_MANA * _survivor_stats.get_mana_multiplier()
+
+
+func get_mana_regen_per_second() -> float:
+	return BASE_MANA_REGEN * _survivor_stats.get_mana_regen_multiplier()
+
+
+func get_move_speed() -> float:
+	return MOVE_SPEED * _survivor_stats.get_move_speed_multiplier()
+
+
+func get_survivor_health_regen() -> float:
+	return _survivor_stats.get_health_regen()
 
 
 func _survivor_cooldown_delta(delta: float, slot: StringName) -> float:
@@ -224,7 +278,8 @@ func _tick_timers(delta: float) -> void:
 	ultimate_cooldown = maxf(0.0, ultimate_cooldown - _survivor_cooldown_delta(delta, &"ultimate"))
 	_invulnerable_time = maxf(0.0, _invulnerable_time - delta)
 	_overcharge_time = maxf(0.0, _overcharge_time - delta)
-	resolve = minf(MAX_RESOLVE, resolve + delta * 6.5)
+	resolve = minf(get_max_resolve(), resolve + delta * 6.5)
+	mana = minf(get_max_mana(), mana + get_mana_regen_per_second() * delta)
 
 
 func _update_buffers(delta: float) -> void:
@@ -239,7 +294,7 @@ func _update_aim() -> void:
 			var target_direction := _survivor_target.global_position - global_position
 			if not target_direction.is_zero_approx():
 				aim_direction = target_direction.normalized()
-		return
+			return
 	var raw_stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
@@ -334,8 +389,7 @@ func try_survivor_primary(target: Node2D) -> bool:
 		return false
 	aim_direction = target_direction.normalized()
 	_primary_buffer = 0.0
-	_begin_dart()
-	return true
+	return _begin_dart()
 
 
 func _update_movement() -> void:
@@ -361,14 +415,17 @@ func _update_movement() -> void:
 			speed_scale = 0.46
 		State.STAGGER, State.DEAD:
 			speed_scale = 0.0
-	velocity = move_input * MOVE_SPEED * speed_scale + _knockback_velocity
+	velocity = move_input * get_move_speed() * speed_scale + _knockback_velocity
 	_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, 42.0)
 
 
-func _begin_dart() -> void:
+func _begin_dart() -> bool:
+	if not _spend_mana(DART_MANA_COST):
+		return false
 	_state_time = 0.055
 	audio_requested.emit(&"sniff_dart_charge", float(blessing) / float(MAX_BLESSING))
 	_set_state(State.DART_STARTUP)
+	return true
 
 
 func _spawn_dart() -> void:
@@ -423,6 +480,8 @@ func on_lightning_dart_hit(target: Node2D, at: Vector2, direction: Vector2, bles
 
 
 func _begin_thunder_dash() -> void:
+	if not _spend_mana(DASH_MANA_COST):
+		return
 	_dash_charge = 0.0
 	_dash_direction = aim_direction
 	audio_requested.emit(&"sniff_dash_charge", 0.25)
@@ -485,6 +544,8 @@ func _apply_dash_route_detonations() -> void:
 
 
 func _cast_roaring_blessing() -> void:
+	if not _spend_mana(BLESSING_MANA_COST):
+		return
 	var tier := get_survivor_ability_tier(&"ability_1")
 	var costs := [0.12, 0.10, 0.08, 0.06, 0.04]
 	var gains := [2, 3, 4, 5, 7]
@@ -503,6 +564,8 @@ func _cast_roaring_blessing() -> void:
 
 
 func _begin_explosive_surge() -> void:
+	if not _spend_mana(SURGE_MANA_COST):
+		return
 	var tier := get_survivor_ability_tier(&"ability_2")
 	var stack_caps := [3, 6, MAX_BLESSING, MAX_BLESSING, MAX_BLESSING]
 	var health_costs := [0.13, 0.11, 0.10, 0.08, 0.05]
@@ -555,6 +618,8 @@ func _resolve_explosive_surge() -> void:
 
 
 func _begin_flashstep() -> void:
+	if not _spend_mana(FLASHSTEP_MANA_COST):
+		return
 	var tier := get_survivor_ability_tier(&"evade")
 	var move_input := Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
 	_dash_direction = move_input.normalized() if not move_input.is_zero_approx() else aim_direction
@@ -655,6 +720,8 @@ func _fork_thunder_dash(primary_target: Node2D, packet: DamagePacket) -> void:
 
 
 func _begin_divine_annihilation() -> void:
+	if not _spend_mana(ANNIHILATION_MANA_COST):
+		return
 	var tier := get_survivor_ability_tier(&"ultimate")
 	_ultimate_snapshot = blessing
 	_ultimate_crowned = blessing >= MAX_BLESSING
@@ -723,7 +790,7 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 	_knockback_velocity += incoming_direction.normalized() * packet.knockback_force
 	audio_requested.emit(&"sniff_hurt", clampf(packet.health_damage / 36.0, 0.2, 1.0))
 	if resolve <= 0.0 and _state != State.ULTIMATE_STARTUP:
-		resolve = MAX_RESOLVE * 0.42
+		resolve = get_max_resolve() * 0.42
 		_attack_area.monitoring = false
 		_state_time = 0.48
 		_set_state(State.STAGGER)
@@ -749,6 +816,21 @@ func heal(amount: float) -> void:
 		return
 	health = minf(get_max_health(), health + amount)
 	stats_changed.emit()
+
+
+func restore_mana(amount: float) -> void:
+	if amount <= 0.0 or _state == State.DEAD:
+		return
+	mana = minf(get_max_mana(), mana + amount)
+	stats_changed.emit()
+
+
+func _spend_mana(cost: float) -> bool:
+	if mana + 0.001 < cost:
+		return false
+	mana = maxf(0.0, mana - cost)
+	stats_changed.emit()
+	return true
 
 
 func gain_blessing(amount: int) -> void:

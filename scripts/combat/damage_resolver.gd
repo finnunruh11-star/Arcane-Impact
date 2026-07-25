@@ -29,5 +29,11 @@ static func _apply_survivor_power(packet: DamagePacket) -> void:
 	var multiplier := maxf(0.1, float(packet.source.call(&"get_survivor_power_multiplier")))
 	if not packet.survivor_ability_slot.is_empty() and packet.source.has_method(&"get_survivor_ability_power_multiplier"):
 		multiplier *= maxf(0.0, float(packet.source.call(&"get_survivor_ability_power_multiplier", packet.survivor_ability_slot)))
+	if not packet.survivor_scaling.is_empty() and packet.source.has_method(&"get_survivor_scaling_multiplier"):
+		multiplier *= maxf(0.0, float(packet.source.call(&"get_survivor_scaling_multiplier", packet.survivor_scaling)))
+	if packet.source.has_method(&"roll_survivor_critical") and bool(packet.source.call(&"roll_survivor_critical")):
+		multiplier *= maxf(1.0, float(packet.source.call(&"get_survivor_critical_damage")))
+		packet.survivor_critical = true
+		packet.tags.append(&"critical")
 	packet.health_damage *= multiplier
 	packet.resolve_damage *= multiplier

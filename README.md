@@ -8,18 +8,21 @@ arena-survival action roguelite. It shares no source code or assets with PVP_DIM
 The current playable build opens on a four-hero roster and sends the selected
 hero into a ten-minute run in the Shattered Reliquary. Enemies enter
 continuously from every edge, grow stronger over time, and drop Arcane Essence.
-Each hero starts with only their automatic basic attack. Collect enough Essence
+Each hero starts with only their manually aimed basic attack. Collect enough Essence
 to pause the horde and choose one of six random upgrades: three stats and three
 hero abilities. The first ability pick unlocks rank 1; repeat picks improve its
 power and cooldown. Ability behavior advances at run levels 5, 10, 15, and 20.
+Every offered boon has a 15% chance to become a double upgrade, increased by
+Luck. Strength, Dexterity, and Intelligence scale their matching attacks while
+Mana, Vitality, and Luck improve resource, survival, and critical-hit systems.
 Survive the full ritual to win.
 
 Kat, the Vampiric Bulwark, features:
 
 - a buffered three-hit Gravebell combo;
 - directional Greatshield guarding, perfect guards, and absorbed-force slams;
-- Bastion March, Leech Choir summons, Mourning Halo, and Black Communion;
-- health, ward, Resolve, curse stacks, lifesteal, and Vitality.
+- mana-draining toggle versions of Leech Choir and Mourning Halo;
+- health, Mana, Ward, Resolve, curse stacks, lifesteal, and Vitality.
 
 Sniff, the Voltaic Gambler, features:
 
@@ -27,7 +30,7 @@ Sniff, the Voltaic Gambler, features:
 - a charged, enemy-phasing Thunder Dash that spends and rebuilds Blessing;
 - Roaring Blessing and Explosive Surge health wagers;
 - an invulnerable damaging Flashstep and crowned Divine Annihilation;
-- a ten-stack Blessing economy with visible cash-out timing.
+- a deliberately hungry Mana economy layered over ten-stack Blessing wagers.
 
 Nad, the Eldritch Tactician, features:
 
@@ -35,7 +38,8 @@ Nad, the Eldritch Tactician, features:
 - charged remote Eldritch Mantle fields with collision-matched lockdown zones;
 - three persistent Terrain Anchors that slow enemies and collapse together;
 - Mental Cascade lock extension, Fold Space, and a prepared Arcane Conduit;
-- a regenerating Mana economy built around setup, control, and cash-out timing.
+- Mana restored by fresh locks, extensions, and prepared control cash-outs;
+- upgrades that escalate into void webs, tentacles, rifts, and abyssal eyes.
 
 Fin, the Shadow Artificer, features:
 
@@ -45,15 +49,16 @@ Fin, the Shadow Artificer, features:
 - concealment, backstabs, and an escape-only Umbral Step;
 - Crossbow, Bow, Dagger, Throwing Dagger, Shadow Bind, Potions, Smoke Bombs,
   and Mutivarg's Rod, with no Legendary items;
+- free physical and alchemical tools, with Mana reserved for shadow and Rod magic;
 - persistent reloads and finite supplies that continue recovering across forms.
 
 All four slices include:
 
-- automatic nearest-target primary attacks and player-controlled active skills;
+- manually aimed primary attacks and player-controlled active skills;
 - a scrolling 2560-by-1560 arena with solid reliquary ruins and camera follow;
 - three continuously spawning enemy profiles with readable collision-matched telegraphs;
 - Arcane Essence pickups, six-choice levels, ranked abilities, five behavior tiers,
-  six stacking stats, a run timer, and kill count;
+    six stacking attributes, critical hits, double boons, a run timer, and kill count;
 - sprite-sheet VFX, layered synthesized SFX, hit-stop, camera trauma, flash,
   floating damage, and Xbox rumble;
 - controller-aware HUD glyphs and a retry/roster run summary.
@@ -72,13 +77,16 @@ All four slices include:
 | Action | Keyboard and mouse | Xbox controller |
 | --- | --- | --- |
 | Move | WASD | Left stick |
+| Aim | Mouse | Right stick |
+| Basic attack | Left mouse | Right trigger |
 | Choose level boon | 1/2/3/4/5/6 or mouse | D-pad / left stick and A |
 | Return to roster | Escape | Menu |
 | Collision debug | Tab | D-pad up |
 
-Primary attacks automatically aim at the closest living enemy. Active inputs
-become available after that ability is selected from a level-up offer. Combat
-HUD slots show `LOCKED`, then the current tier and rank after unlocking.
+Primary attacks happen only when their input is pressed and use mouse or
+right-stick aim. Active inputs become available after that ability is selected
+from a level-up offer. Combat HUD slots show `LOCKED`, then the current tier
+and rank after unlocking.
 
 ### Run progression
 
@@ -86,9 +94,15 @@ HUD slots show `LOCKED`, then the current tier and rank after unlocking.
     tier 4 at level 15, and tier 5 at level 20.
 - **Ability ranks:** the first pick unlocks rank 1. Every repeat pick adds 12%
     ability power and improves its cooldown independently of tier milestones.
-- **Stats:** Force adds 12% damage and Resolve pressure; Haste improves automatic
-    basic attack speed by 10%; Fortitude adds 10% maximum health; Magnetism adds
-    60 pickup range; Recovery adds 1 health per second; Wisdom adds 15% Essence.
+- **Attack scaling:** swords and heavy weapons use Strength; bows and daggers
+    use Dexterity; spells use Intelligence.
+- **Attributes:** Strength adds Strength damage and maximum Resolve; Dexterity
+    adds Dexterity damage and movement speed; Intelligence adds spell damage
+    and Essence gain; Mana adds capacity and regeneration; Vitality adds health
+    and health regeneration; Luck adds critical chance, critical damage, and
+    double-upgrade chance.
+- **Double boons:** every displayed option independently has a base 15% chance
+    to grant two ranks. Each Luck rank adds 5 percentage points.
 - **Tier 3:** preserves the original full hero kits. Tiers 1-2 are deliberately
     weaker versions; tiers 4-5 add new mechanics and stronger identity payoffs.
 

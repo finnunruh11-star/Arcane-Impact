@@ -17,6 +17,7 @@ func _capture() -> void:
 	var player: FinPlayer = scene.get_node(^"CombatWorld/Fin")
 	var hud: FinCombatHud = scene.get_node(^"FinCombatHud")
 	var enemies: Array[Node] = get_nodes_in_group(&"enemies")
+	player.set_survivor_mode(false)
 	player.global_position = Vector2(455.0, 360.0)
 	player.aim_direction = Vector2.RIGHT
 	player.set("_using_gamepad", true)

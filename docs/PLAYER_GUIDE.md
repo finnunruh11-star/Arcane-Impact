@@ -29,8 +29,9 @@ is a scrolling 2560-by-1560 battlefield with solid ruined structures. The camera
 follows the hero and clamps at the world edges. Enemies and heroes collide with
 the ruins; enemy pursuit steers around blocked approaches.
 
-Every hero starts with only their automatic basic attack. It targets the nearest
-living enemy while movement remains under direct control. Active skills become
+Every hero starts with only their manually triggered basic attack. Aim with the
+mouse or right stick and press the attack input to fire or swing; idle heroes do
+not attack. Movement remains under direct control. Active skills become
 usable after they are selected during a level-up. Enemies enter continuously
 from all four arena edges; the active population, health, damage, and speed rise
 throughout the ritual. Enemy profiles rotate between:
@@ -44,6 +45,8 @@ is the red bar above the enemy; cyan is Resolve. Defeated enemies drop green
 Arcane Essence shards. Move near a shard to draw it in. Filling the Essence bar
 pauses combat and presents six unique choices: three random stats and three
 random abilities from the selected hero. Keyboard choices use 1 through 6.
+On controller, move focus with the D-pad or left stick and press Xbox A to
+confirm and select the focused boon.
 
 The first pick of an ability unlocks rank 1. Picking it again raises its rank,
 adding 12% power per repeat and improving its cooldown. Ability behavior uses
@@ -57,14 +60,24 @@ the run's current milestone tier:
 | 15-19 | Tier 4 | New chaining, control, sustain, or form mechanics |
 | 20+ | Tier 5 | Identity-defining capstone behavior |
 
-The six repeatable stats are:
+The six repeatable attributes are:
 
-- **Force:** increases health and Resolve damage by 12%.
-- **Haste:** increases automatic primary attack speed by 10%.
-- **Fortitude:** increases maximum health by 10% and restores the increase.
-- **Magnetism:** increases Essence attraction range by 60 pixels.
-- **Recovery:** restores 1 health per second and heals 12 immediately.
-- **Wisdom:** increases Essence gained from every shard by 15%.
+- **Strength:** adds 12% Strength attack damage and 4% maximum Resolve.
+- **Dexterity:** adds 10% Dexterity attack damage and 3% movement speed.
+- **Intelligence:** adds 12% spell damage and 5% Arcane Essence gain.
+- **Mana:** adds 15% maximum Mana and 12% Mana regeneration.
+- **Vitality:** adds 10% maximum health and 1 health regeneration per second.
+- **Luck:** adds 4% critical chance, 10% critical damage, and 5 percentage
+  points to the double-upgrade chance.
+
+Swords, shields, and other heavy weapons scale with Strength. Bows and daggers
+scale with Dexterity. Spells, summons, auras, lightning, mental attacks, and
+magical objects scale with Intelligence. Critical hits begin at 150% damage;
+Luck increases both their chance and multiplier.
+
+Every offered boon independently has a 15% base chance to display as `DOUBLE`.
+A double boon grants two stat or ability ranks when selected. Luck raises this
+chance, and double ability picks can unlock rank 2 immediately.
 
 Upgrades stack for the duration of the run. Combat HUD slots show `LOCKED`
 before the first pick and `Tn Rm` afterward. The detailed ability values below
@@ -81,9 +94,9 @@ controller Menu button returns to the roster at any time.
 ### Movement and targeting
 
 Move with WASD or the left stick. The run controller tracks the closest living
-enemy and automatically aims primary attacks at it. Directional active
-abilities use that target direction; movement abilities prefer held movement
-input when available.
+enemy for spawning and encounter logic, but it does not attack or aim for the
+player. Aim with the mouse or right stick. Directional movement abilities prefer
+held movement input when available and otherwise use the current aim direction.
 
 ### Health
 
@@ -100,7 +113,16 @@ and regenerates over time.
 
 Kat has 210 maximum Resolve and regenerates 5 per second. Sniff has 138 and
 regenerates 6.5 per second. Nad has 160 and regenerates 5.8 per second. Fin has
-175 and regenerates 5.5 per second. Enemy variants have different Resolve totals.
+175 and regenerates 5.5 per second. Strength increases these maximum values.
+Enemy variants have different Resolve totals.
+
+### Mana
+
+All four heroes have Mana, and the Mana attribute increases both capacity and
+regeneration. Kat's physical weapons and Fin's physical or alchemical tools do
+not spend Mana. Kat's supernatural rites, Sniff's lightning, Nad's mental
+spells, and Fin's shadow or Rod magic do. Each combat HUD shows current and
+maximum Mana plus action costs.
 
 ### Collision and hit confirmation
 
@@ -126,6 +148,7 @@ into healing, Ward, curses, and an ultimate resource.
 
 - **Health:** 340 maximum.
 - **Resolve:** 210 maximum.
+- **Mana:** 120 maximum and regenerates 10 per second before sustained drains.
 - **Ward:** up to 95 temporary damage absorption. Incoming damage removes Ward
   before health. Healing beyond maximum health becomes Ward.
 - **Vitality / Tithe of Life:** 0-100. Kat begins with 35. Dealing damage,
@@ -163,27 +186,32 @@ for 24% of actual damage.
 ### Leech Choir
 
 **Input:** Q / Right bumper  
-**Cooldown:** 9.5 seconds when motes are summoned
+**Activation cooldown:** 9.5 seconds
+**Drain:** 16 Mana per second while active
 
-Summons two autonomous Leech Motes, up to a total cap of three. Motes orbit Kat,
+Toggles the full tier-appropriate Leech Choir on or off. At tier 3 it summons
+three autonomous Leech Motes. Motes orbit Kat,
 seek living enemies within 460 pixels, and strongly prefer cursed targets.
 Each strike deals 9 damage, then the mote returns to orbit. A successful mote
 strike heals Kat for 58% of actual damage and grants 6 Vitality.
 
-Using the ability at the three-mote cap triggers only a short 2-second retry
-cooldown.
+Press the input again to dismiss the Choir even while the activation cooldown
+is running. The drain is charged once by Kat, not once per mote. The Choir
+automatically dismisses itself when Mana reaches zero.
 
 ### Mourning Halo
 
 **Input:** E / Left bumper  
-**Cooldown:** 11.5 seconds
+**Activation cooldown:** 11.5 seconds
+**Drain:** 22 Mana per second while active
 
-Creates a mobile 188-pixel aura around Kat for 5.2 seconds. It pulses every
+Toggles a persistent mobile 188-pixel aura around Kat. It pulses every
 0.58 seconds, dealing 6 health and 7 Resolve damage and applying one Curse
 stack for 4.5 seconds. Halo damage heals Kat for 38% of total damage dealt per
 pulse and grants 2.4 Vitality for each enemy hit.
 
-Recasting replaces the existing Halo.
+Press the input again to remove the Halo even during cooldown. It has no fixed
+duration and shuts off automatically at zero Mana.
 
 ### Bastion March
 
@@ -198,7 +226,7 @@ knockback, heals for 10% of actual damage, and builds Vitality.
 ### Black Communion
 
 **Input:** R / Xbox Y  
-**Requirement:** 100 Vitality
+**Requirement:** 100 Vitality and 55 Mana
 
 After a 0.62-second invocation, Kat affects every cursed enemy and every
 uncursed enemy within 390 pixels. Targets are pulled inward and struck.
@@ -226,6 +254,8 @@ hits, then wagers health and stacks for mobility and explosive area damage.
 
 - **Health:** 245 maximum. Ability costs are nonlethal.
 - **Resolve:** 138 maximum.
+- **Mana:** 130 maximum and regenerates 8.5 per second. Every lightning action
+  spends Mana, so repeated casts exhaust Sniff quickly.
 - **Blessing of Roaring Thunder:** 0-10 stacks. Lightning Dart and Thunder Dash
   hits build stacks. Damage from several abilities scales with current or spent
   Blessing. Reaching 10 displays **Thunder Crowned**.
@@ -235,6 +265,7 @@ hits, then wagers health and stacks for mobility and explosive area damage.
 ### Lightning Dart
 
 **Input:** Left mouse / Right trigger
+**Cost:** 6 Mana
 
 Fires a fast collision-backed projectile. A direct hit builds one Blessing and
 has a 30% chance to chain to a second enemy within 265 pixels. Overcharge makes
@@ -248,6 +279,7 @@ Each chain step deals 72% of the previous depth's damage.
 ### Thunder Dash
 
 **Input:** Hold and release Right mouse / Left trigger
+**Cost:** 24 Mana
 
 Charge for up to 0.82 seconds. Charge controls travel distance from 185 to 445
 pixels and increases damage, Resolve damage, knockback, feedback, and partial
@@ -262,7 +294,7 @@ enemy once. Each successful Dash hit rebuilds one Blessing.
 
 **Input:** Q / Right bumper  
 **Cooldown:** 8 seconds  
-**Cost:** 8% of maximum health
+**Cost:** 30 Mana and 8% of maximum health
 
 Immediately grants four Blessing and Overcharge for 3.8 seconds. Use it to
 force Dart chains, reach Thunder Crowned quickly, or prepare a large Surge.
@@ -272,7 +304,7 @@ The health cost cannot defeat Sniff by itself.
 
 **Input:** E / Left bumper  
 **Cooldown:** 7.5 seconds  
-**Cost:** 10% of maximum health plus all current Blessing
+**Cost:** 38 Mana, 10% of maximum health, and all current Blessing
 
 Consumes every Blessing stack and detonates a circular hitbox around Sniff
 after 0.27 seconds. Its radius is 148 pixels plus 8 per stack spent. It deals
@@ -285,6 +317,7 @@ A zero-stack Surge is legal but much weaker. The health cost is nonlethal.
 
 **Input:** Space / Xbox A  
 **Cooldown:** 0.75 seconds
+**Cost:** 16 Mana
 
 Phases 158 pixels in the movement or aim direction. Sniff is invulnerable for
 0.23 seconds, passes through enemy bodies, and damages every crossed enemy once.
@@ -295,7 +328,7 @@ build stacks.
 
 **Input:** R / Xbox Y  
 **Cooldown:** 20 seconds  
-**Cost:** 15% of maximum health plus all current Blessing
+**Cost:** 70 Mana, 15% of maximum health, and all current Blessing
 
 After a 0.68-second cast, strikes every living enemy within 560 pixels and
 chains a visible lightning arc through the affected group. It deals 68 base
@@ -327,8 +360,8 @@ targets with Arcane Conduit.
 
 - **Health:** 220 maximum.
 - **Resolve:** 160 maximum.
-- **Mana:** 0-100 and regenerates at 13 per second. Every offensive ability
-  spends Mana; Fold Space is free.
+- **Mana:** 0-100 and regenerates at 13 per second. The Mana attribute increases
+  both values. Every spell spends Mana, including Fold Space.
 - **Mental Focus:** enemies can hold up to five stacks. Focus lasts until its
   current duration expires. A target under Eldritch Lock takes 12% more health
   damage per Focus stack, up to a 60% multiplier. Focus without an active Lock
@@ -336,6 +369,14 @@ targets with Arcane Conduit.
 - **Eldritch Lock:** cancels the target's current attack, freezes movement, and
   exposes its Focus vulnerability. Mental Cascade extends only an existing
   Lock; it does not create one on an uncontrolled target.
+- **Control refunds:** a fresh Foresee lock restores 5 Mana, fresh Mantle or
+  Conduit locks restore 4.5-5, existing locks restore smaller amounts, Anchor
+  hits restore 1.5, and Cascade lock extensions restore 3.
+
+Nad's visuals and mechanics become progressively more eldritch with each tier.
+Tier 3 preserves the original complete kit; tier 4 adds void prisons, webs,
+tethers, and cosmic eyes; tier 5 adds tentacle breaches, living walls, shared
+mental systems, hungry rifts, and an arena-wide abyssal eye.
 
 ### Foresee
 
@@ -398,12 +439,13 @@ and damage but deliberately provides no free lockdown.
 ### Fold Space
 
 **Input:** Space / Xbox A<br>
-**Cooldown:** 2.8 seconds
+**Cooldown:** 2.8 seconds<br>
+**Cost:** 14 Mana
 
 Phases 168 pixels in the movement direction, or aim direction when no movement
 input is held. Nad ignores damage for 0.22 seconds and passes through enemy
-bodies during the fold. Fold Space deals no damage and spends no Mana; it is a
-positioning tool for lining up fields and escaping during resource recovery.
+bodies during the fold. Fold Space deals no damage; it is a positioning tool
+for lining up fields and escaping while control refunds rebuild Mana.
 
 ### Arcane Conduit
 
@@ -445,6 +487,9 @@ Dagger, Potions, Smoke Bombs, and the Unreal item Mutivarg's Rod.
 
 - **Health:** 245 maximum.
 - **Resolve:** 175 maximum and regenerates at 5.5 per second.
+- **Mana:** 100 maximum and regenerates 10 per second. Physical weapons,
+  traps, Potions, and Smoke Bombs are free; shadow magic and Mutivarg's Rod
+  spend Mana.
 - **Ward:** up to 52 temporary damage absorption. It is spent before health
   and slowly fades.
 - **Pierce Marks:** each enemy can hold up to five for 8 seconds. Fast attacks,
@@ -464,6 +509,7 @@ cooldowns, and supplies otherwise persist.
 
 **Input:** Space / Xbox A
 **Cooldown:** 4 seconds
+**Cost:** 18 Mana
 
 Umbral Step is Fin's shared defensive escape in every form. For 1.25 seconds,
 Fin becomes unseen, moves at 190% of base speed under full directional control,
@@ -490,11 +536,11 @@ Umbral Veil gains a separate 42% multiplier and then reveals Fin.
 Marks and gains 17% damage per Mark. A backstab gains another 32%. Three Marks
 or a backstab also briefly locks the target.
 
-**Umbral Veil - Q / Right bumper:** Conceals Fin for 3.4 seconds, grants a 16%
+**Umbral Veil - Q / Right bumper:** Costs 20 Mana, conceals Fin for 3.4 seconds, grants a 16%
 movement bonus and 0.26 seconds of initial invulnerability, and empowers the
 next strike. Cooldown: 8 seconds.
 
-**Shadow Lunge - E / Left bumper:** Phases 245 pixels through enemies in 0.16
+**Shadow Lunge - E / Left bumper:** Costs 16 Mana and phases 245 pixels through enemies in 0.16
 seconds, damaging and marking each crossed target once. A concealed or rear
 hit applies two Marks. Cooldown: 4.2 seconds.
 
@@ -545,11 +591,11 @@ applies one Mark. Fin carries three; one regenerates every 3.4 seconds.
 Artificer is a control and sustain toolkit centered on Mutivarg's Rod,
 direction-selected Potions, and persistent alchemical smoke.
 
-**Mutivarg's Rod - Left mouse / Right trigger:** Fires an object bolt that
+**Mutivarg's Rod - Left mouse / Right trigger:** Spends 6 Mana and fires an object bolt that
 applies one Mark. Its Resolve damage gains 20% of the target's current Resolve,
 making it strongest before a break.
 
-**Mutivarg Field - Hold/release Right mouse / Left trigger:** Charge for up to
+**Mutivarg Field - Hold/release Right mouse / Left trigger:** Spends 26 Mana, then charges for up to
 1.02 seconds, then deploy a 120-205 pixel compression field at range. Enemies
 gain one Mark on entry, are briefly locked, are slowed to 42-24% speed based on
 charge, and take repeated health and Resolve pulses. Charge also increases
@@ -590,12 +636,12 @@ every 10 seconds.
 
 ## HUD reference
 
-The upper-left panel shows the selected hero's health, Resolve, state, and
-hero-specific resources. Kat also shows Ward over health and a Vitality bar;
-Sniff shows ten discrete Blessing pips. Nad shows Mana, total active Mental
-Focus, locked-enemy count, and three Anchor pips. Fin shows his current form,
-total active Pierce Marks, Ward, concealment, Crossbow reload, traps, and tool
-supplies. The bottom slots show keyboard
+The upper-left panel shows the selected hero's health, Mana, Resolve, state,
+and hero-specific resources. Kat also shows Ward over health, a Vitality bar,
+and active Choir/Halo drains; Sniff shows ten discrete Blessing pips. Nad shows
+total active Mental Focus, locked-enemy count, and tier-dependent Anchor pips.
+Fin shows his current form, total active Pierce Marks, Ward, concealment,
+Crossbow reload, traps, and tool supplies. The bottom slots show keyboard
 or Xbox glyphs automatically, cooldown progress, readiness, resource
 requirements, and Sniff's health prices.
 

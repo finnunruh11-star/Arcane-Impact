@@ -165,15 +165,15 @@ func play_mind_link(from: Vector2, to: Vector2, power: float) -> void:
 
 func play_mental_distortion(at: Vector2, radius: float, power: float, kind: StringName) -> void:
 	var distortion := MentalDistortion.new()
-	add_child(distortion)
 	distortion.configure(at, radius, power, kind)
-	if kind == &"conduit":
+	add_child(distortion)
+	if kind == &"conduit" or kind == &"cosmic_eye" or kind == &"abyssal_eye":
 		if is_instance_valid(_camera):
 			_camera.add_trauma(1.0)
 		_flash.color = Color(0.72, 1.0, 0.78, _flash.color.a)
 		_flash_strength = maxf(_flash_strength, 0.30 * flash_scale)
 		_start_rumble(1.0)
-	elif kind == &"anchor_detonate" or kind == &"mantle":
+	elif kind == &"anchor_detonate" or kind == &"mantle" or kind == &"void_prison" or kind == &"tentacle_breach":
 		if is_instance_valid(_camera):
 			_camera.add_trauma(lerpf(0.18, 0.48, power))
 		_flash_strength = maxf(_flash_strength, lerpf(0.04, 0.13, power) * flash_scale)

@@ -9,6 +9,7 @@ const HERO_SCENES := [
 ]
 const HERO_NAMES := ["Kat", "Sniff", "Nad", "Fin"]
 const ProgressionScript := preload("res://scripts/survivors/survivor_progression.gd")
+const StatStateScript := preload("res://scripts/survivors/survivor_stat_state.gd")
 
 var _failures: Array[String] = []
 var _check_count := 0
@@ -63,6 +64,34 @@ func _check_progression_model() -> void:
 			stat_count += 1
 	_expect(options.size() == 6 and option_ids.size() == 6, "level-up rolls six unique choices")
 	_expect(stat_count == 3 and ability_count == 3, "every six-choice roll mixes three stats with three hero abilities")
+	var expected_stats := {
+		&"strength": true,
+		&"dexterity": true,
+		&"intelligence": true,
+		&"mana": true,
+		&"vitality": true,
+		&"luck": true,
+	}
+	var catalog_is_original_stats := true
+	for stat: Dictionary in ProgressionScript.STAT_CATALOG:
+		catalog_is_original_stats = catalog_is_original_stats and expected_stats.has(stat[&"id"])
+	_expect(catalog_is_original_stats and ProgressionScript.STAT_CATALOG.size() == expected_stats.size(), "boons use Strength, Dexterity, Intelligence, Mana, Vitality, and Luck")
+	_expect(is_equal_approx(progression.get_double_upgrade_chance(), 0.15), "every boon starts with a 15 percent double-upgrade chance")
+	progression.apply_pick(&"luck", 2)
+	_expect(is_equal_approx(progression.get_double_upgrade_chance(), 0.25), "Luck increases the double-upgrade chance")
+	var stats = StatStateScript.new()
+	stats.add_rank(&"strength")
+	stats.add_rank(&"dexterity")
+	stats.add_rank(&"intelligence")
+	stats.add_rank(&"mana")
+	stats.add_rank(&"vitality")
+	stats.add_rank(&"luck")
+	_expect(is_equal_approx(stats.get_resolve_multiplier(), 1.04), "Strength slightly increases maximum Resolve")
+	_expect(is_equal_approx(stats.get_move_speed_multiplier(), 1.03), "Dexterity slightly increases movement speed")
+	_expect(is_equal_approx(stats.get_scaling_multiplier(&"intelligence"), 1.12), "Intelligence scales spell damage")
+	_expect(is_equal_approx(stats.get_mana_multiplier(), 1.15) and is_equal_approx(stats.get_mana_regen_multiplier(), 1.12), "Mana increases capacity and regeneration")
+	_expect(is_equal_approx(stats.get_health_multiplier(), 1.10) and is_equal_approx(stats.get_health_regen(), 1.0), "Vitality increases health and health regeneration")
+	_expect(is_equal_approx(stats.get_critical_chance(), 0.04) and is_equal_approx(stats.get_critical_damage(), 1.60), "Luck increases critical chance and critical damage")
 	var complete_tier_catalog := true
 	var current_kits_are_tier_three := true
 	for hero_abilities: Array in ProgressionScript.HERO_ABILITIES:
@@ -73,6 +102,12 @@ func _check_progression_model() -> void:
 			current_kits_are_tier_three = current_kits_are_tier_three and tiers.size() >= 3 and String(tiers[2]).to_lower().contains("full")
 	_expect(complete_tier_catalog, "all four heroes expose five abilities with five authored tiers each")
 	_expect(current_kits_are_tier_three, "the original full-strength ability behavior remains tier three")
+	var nad_horror_escalates := true
+	for ability_data: Dictionary in ProgressionScript.HERO_ABILITIES[2]:
+		var tiers := ability_data[&"tiers"] as Array
+		var late_horror := (String(tiers[3]) + " " + String(tiers[4])).to_lower()
+		nad_horror_escalates = nad_horror_escalates and (late_horror.contains("void") or late_horror.contains("tentacle") or late_horror.contains("tendril") or late_horror.contains("eye") or late_horror.contains("abyss") or late_horror.contains("rift") or late_horror.contains("eldritch") or late_horror.contains("maw"))
+	_expect(nad_horror_escalates, "every Nad ability becomes explicitly more eldritch at late tiers")
 	_expect(progression.get_rank(&"signature") == 0 and not progression.is_unlocked(&"signature"), "active abilities start locked")
 	var first_pick: Dictionary = progression.apply_pick(&"signature")
 	_expect(first_pick[&"rank"] == 1 and progression.is_unlocked(&"signature"), "first ability pick unlocks rank one")
@@ -85,7 +120,7 @@ func _check_progression_model() -> void:
 	var found_thunder_dash := false
 	for option: Dictionary in sniff_options:
 		if option[&"id"] == &"signature":
-			found_thunder_dash = String(option[&"title"]) == "THUNDER DASH"
+			found_thunder_dash = String(option[&"title"]).contains("THUNDER DASH")
 	_expect(found_thunder_dash, "hero ability choices use the selected hero's identity")
 
 
@@ -124,6 +159,8 @@ func _check_tier_behavior_contracts() -> void:
 	await process_frame
 	route_target.process_mode = Node.PROCESS_MODE_DISABLED
 	var route_target_health := route_target.health
+	sniff_tier_five.call(&"_set_using_gamepad", true)
+	sniff_tier_five.aim_direction = Vector2.RIGHT
 	sniff_tier_five.call(&"_begin_thunder_dash")
 	sniff_tier_five.set("_dash_charge", 1.0)
 	sniff_tier_five.call(&"_release_thunder_dash")
@@ -188,7 +225,7 @@ func _check_hero_run(hero_index: int) -> bool:
 	var active_slots_locked := true
 	for slot: StringName in ProgressionScript.ABILITY_SLOTS:
 		active_slots_locked = active_slots_locked and not bool(player.call(&"is_survivor_ability_unlocked", slot))
-	_expect(active_slots_locked, "%s starts with only its automatic basic attack" % HERO_NAMES[hero_index])
+	_expect(active_slots_locked, "%s starts with only its manually triggered basic attack" % HERO_NAMES[hero_index])
 
 	var targets: Array[ReliquaryPursuer] = []
 	for enemy_node: Node in get_nodes_in_group(&"enemies"):
@@ -205,18 +242,36 @@ func _check_hero_run(hero_index: int) -> bool:
 		enemy.global_position = Vector2(1120.0, 620.0)
 	var target := targets[0]
 	target.process_mode = Node.PROCESS_MODE_INHERIT
-	target.global_position = player.global_position + Vector2(88.0, 0.0)
+	target.global_position = player.global_position + Vector2(0.0, 88.0)
 	target.health = 1.0
 	target.resolve = 1.0
 	target.move_speed = 0.0
 	target.attack_damage = 0.0
+	for _frame: int in 45:
+		await physics_frame
+		await process_frame
+	_expect(scene.get_kills() == 0, "%s does not attack without player input" % HERO_NAMES[hero_index])
+	var aim_motion := InputEventJoypadMotion.new()
+	aim_motion.device = 0
+	aim_motion.axis = JOY_AXIS_RIGHT_Y
+	aim_motion.axis_value = 1.0
+	Input.parse_input_event(aim_motion)
+	await physics_frame
+	await process_frame
+	_expect(player.get(&"aim_direction").dot(Vector2.DOWN) > 0.90, "%s manual right-stick aim works in Survivor mode" % HERO_NAMES[hero_index])
+	Input.action_press(&"primary")
+	await physics_frame
+	await process_frame
+	Input.action_release(&"primary")
 	for _frame: int in 120:
 		await physics_frame
 		await process_frame
 		if scene.get_kills() > 0 and scene.get_experience() > 0:
 			break
-	_expect(scene.get_kills() == 1, "%s automatic primary defeats its nearest target" % HERO_NAMES[hero_index])
+	_expect(scene.get_kills() == 1, "%s manual primary defeats its aimed target" % HERO_NAMES[hero_index])
 	_expect(scene.get_experience() >= 1, "%s collects the defeated target's Essence shard" % HERO_NAMES[hero_index])
+	aim_motion.axis_value = 0.0
+	Input.parse_input_event(aim_motion)
 	scene.queue_free()
 	for _frame: int in 8:
 		await process_frame
@@ -240,6 +295,29 @@ func _check_level_up() -> void:
 	for _frame: int in 8:
 		await process_frame
 
+	var controller_scene = HERO_SCENES[0].instantiate()
+	controller_scene.set(&"audio_enabled", false)
+	root.add_child(controller_scene)
+	for _frame: int in 8:
+		await process_frame
+	controller_scene.grant_test_experience(4)
+	var controller_hud := controller_scene.get_node(^"SurvivorRunHud") as SurvivorRunHud
+	var controller_options: Array = controller_hud.get("_options")
+	var focused_option: Dictionary = controller_options[0]
+	var confirm_event := InputEventJoypadButton.new()
+	confirm_event.device = 0
+	confirm_event.button_index = JOY_BUTTON_A
+	confirm_event.pressed = true
+	Input.parse_input_event(confirm_event)
+	await process_frame
+	confirm_event.pressed = false
+	Input.parse_input_event(confirm_event)
+	_expect(not controller_scene.is_level_up_active() and not paused, "Xbox A confirms the focused level-up boon")
+	_expect(controller_scene.get_upgrade_rank(StringName(focused_option[&"id"])) == int(focused_option.get(&"amount", 1)), "controller confirmation applies the focused boon amount")
+	controller_scene.queue_free()
+	for _frame: int in 8:
+		await process_frame
+
 	var stat_scene = HERO_SCENES[0].instantiate()
 	stat_scene.set(&"audio_enabled", false)
 	root.add_child(stat_scene)
@@ -247,9 +325,26 @@ func _check_level_up() -> void:
 		await process_frame
 	var stat_player := stat_scene.get_player() as Node2D
 	stat_scene.grant_test_experience(4)
-	stat_scene.choose_test_upgrade(&"force")
-	_expect(is_equal_approx(float(stat_player.call(&"get_survivor_power_multiplier")), 1.12), "Force applies the run power multiplier")
+	stat_scene.choose_test_upgrade(&"strength", 2)
+	_expect(stat_scene.get_upgrade_rank(&"strength") == 2, "a double boon applies two upgrade ranks")
+	_expect(is_equal_approx(float(stat_player.call(&"get_survivor_scaling_multiplier", &"strength")), 1.24), "Strength scales Strength attacks once per rank")
+	_expect(is_equal_approx(float(stat_player.call(&"get_max_resolve")), KatPlayer.MAX_RESOLVE * 1.08), "Strength slightly increases maximum Resolve")
 	stat_scene.queue_free()
+	for _frame: int in 8:
+		await process_frame
+
+	var intelligence_scene = HERO_SCENES[0].instantiate()
+	intelligence_scene.set(&"audio_enabled", false)
+	root.add_child(intelligence_scene)
+	for _frame: int in 8:
+		await process_frame
+	intelligence_scene.grant_test_experience(4)
+	intelligence_scene.choose_test_upgrade(&"intelligence", 2)
+	intelligence_scene.set("_experience", 0)
+	intelligence_scene.set("_experience_required", 100)
+	intelligence_scene.call(&"_on_experience_collected", 10)
+	_expect(intelligence_scene.get_experience() == 11, "Intelligence slightly increases Arcane Essence gain")
+	intelligence_scene.queue_free()
 	for _frame: int in 8:
 		await process_frame
 

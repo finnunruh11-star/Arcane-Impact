@@ -13,12 +13,12 @@ const TIER_LEVELS := [1, 5, 10, 15, 20]
 const TIER_POWER := [0.58, 0.78, 1.0, 1.28, 1.62]
 const TIER_COOLDOWN := [1.32, 1.15, 1.0, 0.88, 0.74]
 const STAT_CATALOG: Array[Dictionary] = [
-	{&"id": &"force", &"title": "FORCE", &"description": "+12% damage and Resolve pressure"},
-	{&"id": &"haste", &"title": "HASTE", &"description": "+10% automatic basic attack speed"},
-	{&"id": &"fortitude", &"title": "FORTITUDE", &"description": "+10% maximum health and restore the increase"},
-	{&"id": &"magnet", &"title": "MAGNETISM", &"description": "+60 Essence attraction range"},
-	{&"id": &"recovery", &"title": "RECOVERY", &"description": "+1 health regenerated each second"},
-	{&"id": &"wisdom", &"title": "WISDOM", &"description": "+15% Essence from every shard"},
+	{&"id": &"strength", &"title": "STRENGTH", &"description": "+12% Strength damage and +4% maximum Resolve"},
+	{&"id": &"dexterity", &"title": "DEXTERITY", &"description": "+10% Dexterity damage and +3% movement speed"},
+	{&"id": &"intelligence", &"title": "INTELLIGENCE", &"description": "+12% spell damage and +5% Arcane Essence"},
+	{&"id": &"mana", &"title": "MANA", &"description": "+15% maximum Mana and +12% Mana regeneration"},
+	{&"id": &"vitality", &"title": "VITALITY", &"description": "+10% maximum health and +1 health regenerated each second"},
+	{&"id": &"luck", &"title": "LUCK", &"description": "+4% critical chance, +10% critical damage, +5% double-offer chance"},
 ]
 static var HERO_ABILITIES: Array[Array] = [
 	[
@@ -36,11 +36,11 @@ static var HERO_ABILITIES: Array[Array] = [
 		_ability(&"ultimate", "DIVINE ANNIHILATION", ["Focused blast with no Crowned safety", "Wide blast and brief invulnerability", "Full Divine Annihilation", "Three rotating storm fronts continue after impact", "The storm repeatedly retargets and fills the arena with crossing arcs"]),
 	],
 	[
-		_ability(&"signature", "ELDRITCH MANTLE", ["Small pulse with a brief control lock", "Charge for improved radius and lock", "Full charged Eldritch Mantle", "Locked enemies tether nearby enemies in place", "The Mantle becomes a gravity prison that cancels every attack inside"]),
-		_ability(&"ability_1", "TERRAIN ANCHOR", ["Place one Anchor and detonate it", "Maintain two Anchors", "Full three-Anchor network", "Anchors tether enemies that enter their fields", "Anchors link into walls that repeatedly lock and crush crossings"]),
-		_ability(&"ability_2", "MENTAL CASCADE", ["Narrow cone with no lock extension", "Wider cone extends one lock", "Full Mental Cascade", "Cascade jumps between focused enemies", "Every focused enemy joins a mental web and shares control effects"]),
-		_ability(&"evade", "FOLD SPACE", ["Short displacement without phasing", "Brief phase through bodies", "Full invulnerable Fold Space", "Fold to the nearest Anchor when aiming at it", "Departure and arrival zones freeze enemies and reset on a locked takedown"]),
-		_ability(&"ultimate", "ARCANE CONDUIT", ["Small field that briefly interrupts", "Wide field with improved focus", "Full Arcane Conduit", "Locked targets remain suspended after the blast", "Total Lock freezes every enemy and amplifies damage shared through the web"]),
+		_ability(&"signature", "ELDRITCH MANTLE", ["A whispering pulse briefly stills one mind", "A thin void membrane widens the lock", "Full charged Eldritch Mantle tears open a stable rift", "Black tendrils tether locked minds inside a void prison", "A colossal abyssal eye opens and cancels every attack beneath its gaze"]),
+		_ability(&"ability_1", "TERRAIN ANCHOR", ["Plant one alien sigil and rupture it", "A second sigil grows watching eyes", "Full three-Anchor network opens linked void mouths", "Tentacles lash from each Anchor and bind crossings", "Five breaches join into living walls that repeatedly lock and crush prey"]),
+		_ability(&"ability_2", "MENTAL CASCADE", ["A psychic whisper cuts through a narrow cone", "The whisper becomes a rift that extends one lock", "Full Mental Cascade floods focused minds with the void", "Tendrils jump between focused enemies as a black web", "Every focused enemy becomes one eldritch nervous system and shares control"]),
+		_ability(&"evade", "FOLD SPACE", ["Slip through a hairline crack in space", "The crack briefly phases through bodies", "Full invulnerable Fold Space crosses the void", "Aim at an Anchor to emerge from its watching rift", "Departure and arrival become hungry maws that freeze prey and reopen on locked deaths"]),
+		_ability(&"ultimate", "ARCANE CONDUIT", ["A distant presence briefly interrupts nearby minds", "Its shadow widens and deepens their focus", "Full Arcane Conduit manifests the watching void", "A cosmic eye suspends locked targets after the blast", "Total Lock opens the abyss: every enemy freezes and suffers through one living web"]),
 	],
 	[
 		_ability(&"signature", "FORM SIGNATURES", ["Quick, uncharged signature tools", "Partial charge and improved precision", "Full signatures for all four forms", "Charged signatures echo the previous form", "Every signature invokes all four forms in sequence"]),
@@ -98,8 +98,8 @@ func is_unlocked(slot: StringName) -> bool:
 	return slot in ABILITY_SLOTS and get_rank(slot) > 0
 
 
-func apply_pick(upgrade_id: StringName) -> Dictionary:
-	_ranks[upgrade_id] = get_rank(upgrade_id) + 1
+func apply_pick(upgrade_id: StringName, amount := 1) -> Dictionary:
+	_ranks[upgrade_id] = get_rank(upgrade_id) + maxi(1, amount)
 	return get_state(upgrade_id)
 
 
@@ -126,6 +126,10 @@ func get_ability_cooldown_multiplier(slot: StringName) -> float:
 	return maxf(0.42, float(TIER_COOLDOWN[tier_index]) * pow(0.94, float(get_rank(slot) - 1)))
 
 
+func get_double_upgrade_chance() -> float:
+	return minf(1.0, 0.15 + 0.05 * float(get_rank(&"luck")))
+
+
 func roll_options(rng: RandomNumberGenerator, count := 6) -> Array[Dictionary]:
 	var stat_pool: Array[Dictionary] = []
 	for stat: Dictionary in STAT_CATALOG:
@@ -146,6 +150,7 @@ func roll_options(rng: RandomNumberGenerator, count := 6) -> Array[Dictionary]:
 			&"description": ("UNLOCK TIER %d  -  " if rank == 0 else "RANK %d > %d  -  ") % ([tier] if rank == 0 else [rank, rank + 1]) + String(tiers[tier - 1]),
 			&"rank": rank,
 			&"tier": tier,
+			&"tier_description": String(tiers[tier - 1]),
 		})
 	var option_count := mini(maxi(0, count), stat_pool.size() + ability_pool.size())
 	var options: Array[Dictionary] = []
@@ -167,6 +172,19 @@ func roll_options(rng: RandomNumberGenerator, count := 6) -> Array[Dictionary]:
 		var swap_option: Dictionary = options[index]
 		options[index] = options[swap_index]
 		options[swap_index] = swap_option
+	var double_chance := get_double_upgrade_chance()
+	for option: Dictionary in options:
+		var amount := 2 if rng.randf() < double_chance else 1
+		option[&"amount"] = amount
+		if amount < 2:
+			continue
+		option[&"title"] = "DOUBLE %s" % String(option[&"title"])
+		if option[&"kind"] == &"ability":
+			var rank := int(option[&"rank"])
+			var prefix := "UNLOCK RANK 2" if rank == 0 else "RANK %d > %d" % [rank, rank + amount]
+			option[&"description"] = "DOUBLE: %s  -  %s" % [prefix, String(option[&"tier_description"])]
+		else:
+			option[&"description"] = "DOUBLE: %s" % String(option[&"description"])
 	return options
 
 

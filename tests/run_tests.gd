@@ -86,9 +86,30 @@ func _run() -> void:
 	dummy.reset_full()
 	survivor_source.set_survivor_power_multiplier(1.12)
 	survivor_source.set_survivor_ability_progress(&"signature", 2, 3, 1.12, 0.94)
+	survivor_source.set_survivor_power_multiplier(1.0)
+	survivor_source.apply_survivor_stat(&"strength", 1)
 	var compounded_packet = DamagePacketScript.kat_slam(0.0, survivor_source)
 	DamageResolverScript.apply(dummy, compounded_packet, Vector2.RIGHT)
-	_expect(is_equal_approx(TargetDummyScript.MAX_HEALTH - dummy.health, 34.0 * 1.12 * 1.12), "Force and slot-specific ability power multiply once each")
+	_expect(is_equal_approx(TargetDummyScript.MAX_HEALTH - dummy.health, 34.0 * 1.12 * 1.12), "Strength and slot-specific ability power multiply once each")
+	_expect(DamagePacketScript.kat_primary(0, survivor_source).survivor_scaling == &"strength", "swords and heavy weapons use Strength scaling")
+	_expect(DamagePacketScript.fin_dagger(survivor_source, 0).survivor_scaling == &"dexterity", "daggers and bows use Dexterity scaling")
+	_expect(DamagePacketScript.sniff_dart(survivor_source, 0).survivor_scaling == &"intelligence", "lightning and other spells use Intelligence scaling")
+	var critical_source = KatPlayerScript.new()
+	critical_source.apply_survivor_stat(&"luck", 20)
+	seed(1337)
+	var critical_damage := 0.0
+	var critical_packet: DamagePacket
+	for _attempt: int in 12:
+		dummy.reset_full()
+		var candidate := DamagePacketScript.kat_primary(0, critical_source)
+		DamageResolverScript.apply(dummy, candidate, Vector2.RIGHT)
+		if candidate.survivor_critical:
+			critical_packet = candidate
+			critical_damage = TargetDummyScript.MAX_HEALTH - dummy.health
+			break
+	_expect(is_instance_valid(critical_packet) and critical_packet.tags.has(&"critical"), "Luck can mark a resolved packet as critical")
+	_expect(is_equal_approx(critical_damage, 16.0 * 3.5), "Luck increases critical damage and applies it once")
+	critical_source.free()
 	survivor_source.free()
 	dummy.queue_free()
 	await process_frame
@@ -138,14 +159,32 @@ func _run() -> void:
 	_expect(kat.health < health_before_guard, "Kat guard does not block attacks from behind")
 
 	kat.call("_cast_leech_choir")
+	_expect(kat.get_mote_count() == 3 and kat.is_leech_choir_active(), "Leech Choir toggles on with its full tier-three swarm")
+	var choir_mana_before: float = kat.mana
+	kat.call("_tick_sustained_mana", 1.0)
+	_expect(kat.mana < choir_mana_before, "Leech Choir drains Mana centrally while active")
 	kat.call("_cast_leech_choir")
-	_expect(kat.get_mote_count() == 3, "Leech Choir respects its three-summon cap")
+	_expect(kat.get_mote_count() == 0 and not kat.is_leech_choir_active(), "Leech Choir toggles off even while its activation cooldown remains")
 	kat.call("_cast_mourning_halo")
 	_expect(kat.is_halo_active(), "Mourning Halo creates its collision-backed aura")
+	var halo_mana_before: float = kat.mana
+	kat.call("_tick_sustained_mana", 1.0)
+	_expect(kat.mana < halo_mana_before, "Mourning Halo persists by draining substantial Mana")
+	kat.call("_cast_mourning_halo")
+	_expect(not kat.is_halo_active(), "Mourning Halo toggles off on a second cast")
+	kat.call("_cast_mourning_halo")
+	kat.mana = 0.1
+	kat.call("_tick_sustained_mana", 1.0)
+	_expect(kat.mana == 0.0 and not kat.is_halo_active(), "Kat's sustained spells shut off automatically when Mana is exhausted")
+	kat.restore_mana(999.0)
+	kat.call("_cast_mourning_halo")
 	enemy.apply_curse(10, 6.0)
 	_expect(enemy.get_curse_stacks() == 5, "enemy curse intensity caps at five stacks")
 	var enemy_health_before_ultimate: float = enemy.health
 	kat.vitality = KatPlayerScript.MAX_VITALITY
+	var communion_mana_before: float = kat.mana
+	kat.call("_begin_black_communion")
+	_expect(is_equal_approx(kat.mana, communion_mana_before - KatPlayerScript.COMMUNION_MANA_COST), "Black Communion spends Mana while Kat's physical weapons remain free")
 	kat.call("_resolve_black_communion")
 	_expect(kat.vitality == 0.0, "Black Communion spends all Vitality")
 	_expect(enemy.health < enemy_health_before_ultimate, "Black Communion damages cursed enemies")
@@ -205,6 +244,9 @@ func _run() -> void:
 	_expect(sniff.get_blessing_count() == 2, "dart and chain hits each build Blessing")
 
 	sniff.aim_direction = Vector2.RIGHT
+	var dart_mana_before: float = sniff.mana
+	sniff.call("_begin_dart")
+	_expect(is_equal_approx(sniff.mana, dart_mana_before - SniffPlayerScript.DART_MANA_COST), "Lightning Dart spends Mana")
 	sniff.call("_spawn_dart")
 	var spawned_projectile := false
 	for child: Node in sniff_world.get_children():
@@ -262,6 +304,11 @@ func _run() -> void:
 	sniff_enemies[2].global_position = Vector2(720.0, 360.0)
 	sniff.blessing = SniffPlayerScript.MAX_BLESSING
 	sniff.call("_begin_divine_annihilation")
+	_expect(sniff.blessing == SniffPlayerScript.MAX_BLESSING and sniff.ultimate_cooldown == 0.0, "Divine Annihilation is blocked when Sniff lacks its high Mana cost")
+	sniff.restore_mana(999.0)
+	var annihilation_mana_before: float = sniff.mana
+	sniff.call("_begin_divine_annihilation")
+	_expect(is_equal_approx(sniff.mana, annihilation_mana_before - SniffPlayerScript.ANNIHILATION_MANA_COST), "Divine Annihilation consumes a large Mana payment")
 	var crowned_health_before: float = sniff.health
 	var blocked_damage: float = sniff.receive_hit(DamagePacketScript.enemy_melee(sniff_enemies[2], 44.0), Vector2.LEFT)
 	_expect(blocked_damage == 0.0 and sniff.health == crowned_health_before, "crowned Divine Annihilation grants cast-window invulnerability")
@@ -305,6 +352,7 @@ func _run() -> void:
 	_expect(is_equal_approx(amplified_damage, amplified_packet.health_damage * 1.6), "five Focus stacks amplify damage to a locked target")
 
 	nad.mana = NadPlayerScript.MAX_MANA
+	nad_enemy.set("_control_lock_remaining", 0.0)
 	nad.aim_direction = Vector2.RIGHT
 	var foresee_health_before: float = nad_enemy.health
 	nad.call("_begin_foresee")
@@ -313,7 +361,7 @@ func _run() -> void:
 		await physics_frame
 		await process_frame
 	_expect(nad_enemy.health < foresee_health_before, "Foresee damages through its narrow collision probe")
-	_expect(nad.mana < NadPlayerScript.MAX_MANA, "Foresee spends Mana")
+	_expect(nad.mana > NadPlayerScript.MAX_MANA - NadPlayerScript.FORESEE_COST and nad.mana < NadPlayerScript.MAX_MANA, "a fresh Foresee lock refunds most of its Mana cost")
 
 	var anchor_enemy = ReliquaryPursuerScript.new()
 	anchor_enemy.configure(nad, 1)
@@ -343,6 +391,7 @@ func _run() -> void:
 	conduit_enemy.apply_control_lock(2.0)
 	nad.mana = NadPlayerScript.MAX_MANA
 	nad.call("_begin_arcane_conduit")
+	var conduit_mana_after_cost: float = nad.mana
 	var conduit_health_before: float = nad.health
 	var conduit_blocked: float = nad.receive_hit(DamagePacketScript.enemy_melee(conduit_enemy, 42.0), Vector2.LEFT)
 	_expect(conduit_blocked == 0.0 and nad.health == conduit_health_before, "Arcane Conduit grants cast-window invulnerability")
@@ -351,6 +400,7 @@ func _run() -> void:
 		await process_frame
 	var conduit_target_before: float = conduit_enemy.health
 	nad.call("_resolve_arcane_conduit")
+	_expect(nad.mana > conduit_mana_after_cost, "Arcane Conduit restores Mana from prepared control targets")
 	_expect(conduit_enemy.health < conduit_target_before, "Arcane Conduit cashes out a locked target across its arena sensor")
 	_expect(nad.ultimate_cooldown > 0.0, "Arcane Conduit starts its cooldown")
 	_expect(
@@ -394,6 +444,7 @@ func _run() -> void:
 	_expect(fin_enemy.get_pierce_marks() == 0, "Mind Pierce consumes prepared Pierce Marks")
 	fin.call("_cast_umbral_veil")
 	_expect(fin.is_concealed(), "Umbral Veil enters an explicit concealment state")
+	_expect(is_equal_approx(fin.mana, FinPlayerScript.MAX_MANA - FinPlayerScript.VEIL_MANA_COST), "Fin spends Mana on shadow magic")
 	fin_enemy.call("_begin_windup")
 	fin_enemy.call("_physics_process", 0.02)
 	_expect(not fin_enemy.is_attack_winding_up(), "concealment interrupts enemy windup authority")
@@ -429,13 +480,18 @@ func _run() -> void:
 
 	fin.select_form(FinPlayerScript.Form.ARTIFICER)
 	fin.health = 120.0
+	var tool_mana_before: float = fin.mana
 	var potions_before: int = fin.get_potion_count()
 	_expect(fin.use_potion(FinPlayerScript.Potion.MENDING), "Artificer can deliberately select a potion")
 	_expect(fin.health > 120.0 and fin.get_potion_count() == potions_before - 1, "Mending Draught heals and consumes one supply")
 	var smoke_before: int = fin.get_smoke_bomb_count()
 	fin.call("_throw_smoke_bomb")
 	_expect(fin.get_smoke_bomb_count() == smoke_before - 1 and fin.is_concealed(), "Smoke Bomb creates concealment and consumes a charge")
-	fin.set("_active_action", &"mutivarg_field")
+	_expect(is_equal_approx(fin.mana, tool_mana_before), "Fin's potions and physical tools do not spend Mana")
+	fin.set("mutivarg_cooldown", 0.0)
+	var mutivarg_mana_before: float = fin.mana
+	fin.call("_begin_signature")
+	_expect(is_equal_approx(fin.mana, mutivarg_mana_before - FinPlayerScript.MUTIVARG_MANA_COST), "Mutivarg's magical field spends Mana")
 	fin.set("_signature_charge", 1.0)
 	fin.call("_release_signature")
 	var has_mutivarg_field := false
@@ -455,7 +511,9 @@ func _run() -> void:
 	var step_target_health_before: float = fin_enemy.health
 	fin_enemy.call("_begin_windup")
 	fin.aim_direction = Vector2.RIGHT
+	var step_mana_before: float = fin.mana
 	fin.call("_begin_umbral_step")
+	_expect(is_equal_approx(fin.mana, step_mana_before - FinPlayerScript.UMBRAL_STEP_MANA_COST), "Umbral Step spends Mana")
 	_expect(fin.is_umbral_stepping() and fin.is_concealed(), "Umbral Step makes Fin unseen for its escape window")
 	_expect(fin.collision_mask == 4 and not (fin.get("_attack_area") as Area2D).monitoring, "Umbral Step phases enemy bodies and disables offense")
 	_expect(is_equal_approx(fin.umbral_step_cooldown, FinPlayerScript.UMBRAL_STEP_COOLDOWN), "Umbral Step starts its authored cooldown")
