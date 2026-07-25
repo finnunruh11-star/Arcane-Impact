@@ -132,19 +132,36 @@ static func sniff_dart(owner: Node, blessing_count: int, chain_depth := 0) -> Da
 	return packet
 
 
-static func sniff_dash(owner: Node, charge: float, stacks_spent: int) -> DamagePacket:
-	var shaped := CombatMath.shaped_charge(charge)
-	var stack_scale := 1.0 + float(clampi(stacks_spent, 0, 3)) * 0.16
+static func sniff_heavenfall(owner: Node, load_count: int) -> DamagePacket:
+	var load := clampi(load_count, 0, 10)
 	var packet := DamagePacket.new()
 	packet.source = owner
-	packet.health_damage = lerpf(23.0, 47.0, shaped) * stack_scale
-	packet.resolve_damage = lerpf(18.0, 44.0, shaped) * stack_scale
-	packet.knockback_force = lerpf(240.0, 510.0, shaped)
-	packet.hit_stop_seconds = lerpf(0.032, 0.052, shaped)
-	packet.camera_trauma = lerpf(0.19, 0.42, shaped)
-	packet.rumble_strength = lerpf(0.24, 0.58, shaped)
-	packet.tags.assign([&"movement", &"lightning", &"signature", &"control"])
+	packet.health_damage = 74.0 + float(load) * 4.0
+	packet.resolve_damage = 62.0 + float(load) * 3.0
+	packet.knockback_force = 610.0
+	packet.hit_stop_seconds = 0.072
+	packet.camera_trauma = 0.72
+	packet.rumble_strength = 0.82
+	packet.tags.assign([&"area", &"lightning", &"signature", &"chain", &"heavy"])
 	packet.survivor_ability_slot = &"signature"
+	packet.survivor_scaling = &"intelligence"
+	return packet
+
+
+static func sniff_tempest(owner: Node, load_count: int, chain_depth := 0) -> DamagePacket:
+	var load := clampi(load_count, 0, 10)
+	var depth := maxi(0, chain_depth)
+	var chain_scale := pow(0.91, float(depth))
+	var packet := DamagePacket.new()
+	packet.source = owner
+	packet.health_damage = (58.0 + float(load) * 3.2) * chain_scale
+	packet.resolve_damage = (48.0 + float(load) * 2.4) * chain_scale
+	packet.knockback_force = 390.0 * chain_scale
+	packet.hit_stop_seconds = 0.044
+	packet.camera_trauma = 0.38
+	packet.rumble_strength = 0.48
+	packet.tags.assign([&"area", &"lightning", &"chain", &"storm"])
+	packet.survivor_ability_slot = &"ability_1"
 	packet.survivor_scaling = &"intelligence"
 	return packet
 
@@ -164,33 +181,33 @@ static func sniff_flashstep(owner: Node, blessing_count: int) -> DamagePacket:
 	return packet
 
 
-static func sniff_surge(owner: Node, stacks_spent: int) -> DamagePacket:
-	var stacks := clampi(stacks_spent, 0, 10)
+static func sniff_discharge(owner: Node, load_count: int) -> DamagePacket:
+	var load := clampi(load_count, 0, 10)
 	var packet := DamagePacket.new()
 	packet.source = owner
-	packet.health_damage = 31.0 + float(stacks) * 7.0
-	packet.resolve_damage = 34.0 + float(stacks) * 4.5
-	packet.knockback_force = 380.0 + float(stacks) * 27.0
-	packet.hit_stop_seconds = lerpf(0.046, 0.078, float(stacks) / 10.0)
-	packet.camera_trauma = lerpf(0.31, 0.74, float(stacks) / 10.0)
-	packet.rumble_strength = lerpf(0.40, 0.90, float(stacks) / 10.0)
-	packet.tags.assign([&"area", &"lightning", &"health_cost", &"heavy"])
+	packet.health_damage = 42.0 + float(load) * 14.0
+	packet.resolve_damage = 55.0 + float(load) * 9.0
+	packet.knockback_force = 520.0 + float(load) * 42.0
+	packet.hit_stop_seconds = lerpf(0.062, 0.118, float(load) / 10.0)
+	packet.camera_trauma = lerpf(0.48, 1.0, float(load) / 10.0)
+	packet.rumble_strength = lerpf(0.58, 1.0, float(load) / 10.0)
+	packet.tags.assign([&"area", &"lightning", &"discharge", &"heavy"])
 	packet.survivor_ability_slot = &"ability_2"
 	packet.survivor_scaling = &"intelligence"
 	return packet
 
 
-static func sniff_annihilation(owner: Node, blessing_count: int) -> DamagePacket:
-	var stacks := clampi(blessing_count, 0, 10)
+static func sniff_worldstorm(owner: Node, load_count: int) -> DamagePacket:
+	var load := clampi(load_count, 0, 10)
 	var packet := DamagePacket.new()
 	packet.source = owner
-	packet.health_damage = 68.0 + float(stacks) * 9.0
-	packet.resolve_damage = 82.0 + float(stacks) * 6.0
-	packet.knockback_force = 760.0
-	packet.hit_stop_seconds = 0.096
+	packet.health_damage = 105.0 + float(load) * 8.0
+	packet.resolve_damage = 112.0 + float(load) * 7.0
+	packet.knockback_force = 920.0
+	packet.hit_stop_seconds = 0.112
 	packet.camera_trauma = 1.0
 	packet.rumble_strength = 1.0
-	packet.tags.assign([&"ultimate", &"lightning", &"health_cost", &"heavy"])
+	packet.tags.assign([&"ultimate", &"lightning", &"chain", &"storm", &"heavy"])
 	packet.survivor_ability_slot = &"ultimate"
 	packet.survivor_scaling = &"intelligence"
 	return packet

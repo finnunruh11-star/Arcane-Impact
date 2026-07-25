@@ -36,18 +36,20 @@ enum State {
 
 const MAX_HEALTH := 220.0
 const MAX_RESOLVE := 160.0
-const MAX_MANA := 100.0
+const MAX_MANA := 120.0
 const MOVE_SPEED := 296.0
-const BASE_MANA_REGEN := 3.0
-const CASCADE_MANA_REGEN := 8.0
-const CASCADE_REGEN_DURATION := 4.0
+const BASE_MANA_REGEN := 5.0
+const CASCADE_MANA_REGEN := 11.0
+const CASCADE_REGEN_DURATION := 5.0
+const CASCADE_HIT_MANA_RESTORE := 10.0
+const FORESEE_HIT_MANA_RESTORE := 2.0
 const INPUT_BUFFER_DURATION := 0.12
-const FORESEE_COST := 7.0
-const MANTLE_COST := 32.0
-const ANCHOR_COST := 18.0
-const CASCADE_COST := 24.0
-const FOLD_COST := 14.0
-const CONDUIT_COST := 50.0
+const FORESEE_COST := 5.0
+const MANTLE_COST := 28.0
+const ANCHOR_COST := 15.0
+const CASCADE_COST := 22.0
+const FOLD_COST := 10.0
+const CONDUIT_COST := 48.0
 const FORESEE_REACH := 242.0
 const MANTLE_MIN_RADIUS := 135.0
 const MANTLE_MAX_RADIUS := 230.0
@@ -509,6 +511,7 @@ func _resolve_foresee_candidates(candidates: Array[Node2D], tier: int) -> void:
 	var target_limit := [1, 1, 2, 3, 5][clamped_tier - 1] as int
 	var focus_applied := 2 if clamped_tier >= 4 else 1
 	var strongest_focus := 0
+	var successful_hits := 0
 	for target_index: int in mini(target_limit, candidates.size()):
 		var target := candidates[target_index]
 		var focus_before := _get_target_focus(target)
@@ -519,6 +522,7 @@ func _resolve_foresee_candidates(candidates: Array[Node2D], tier: int) -> void:
 		var packet := DamagePacket.nad_foresee(self, focus_before + focus_applied)
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt > 0.0:
+			successful_hits += 1
 			combat_impact.emit(target.global_position, direction, packet, 0.28 + 0.05 * float(focus_before) + 0.04 * float(clamped_tier - 1))
 			mind_link_requested.emit(global_position, target.global_position, 0.40 + 0.10 * float(clamped_tier))
 			var probe_effect := &"nad_probe"
@@ -529,6 +533,8 @@ func _resolve_foresee_candidates(candidates: Array[Node2D], tier: int) -> void:
 			elif clamped_tier >= 5:
 				probe_effect = &"nad_probe_corrupt"
 			effect_requested.emit(probe_effect, target.global_position, direction, 0.64 + 0.14 * float(clamped_tier))
+	if successful_hits > 0:
+		restore_mana(FORESEE_HIT_MANA_RESTORE * float(successful_hits))
 	audio_requested.emit(&"nad_probe", 0.35 + 0.08 * float(strongest_focus) + 0.06 * float(clamped_tier - 1))
 
 
@@ -738,6 +744,7 @@ func _apply_cascade() -> void:
 
 func _activate_cascade_regeneration() -> void:
 	_cascade_regen_remaining = maxf(_cascade_regen_remaining, CASCADE_REGEN_DURATION)
+	restore_mana(CASCADE_HIT_MANA_RESTORE)
 	announcement_requested.emit("ARCANE RECURSION")
 	stats_changed.emit()
 

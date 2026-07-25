@@ -23,6 +23,11 @@ func _run_soak() -> void:
 		if cue == &"sniff_hurt":
 			metrics[&"incoming"] = int(metrics[&"incoming"]) + 1
 	)
+	for enemy_node: Node in get_nodes_in_group(&"enemies"):
+		if enemy_node is ReliquaryPursuer:
+			var durable_enemy := enemy_node as ReliquaryPursuer
+			durable_enemy.max_health = 3500.0
+			durable_enemy.health = durable_enemy.max_health
 
 	for frame_index: int in 900:
 		var nearest := _nearest_enemy(player)
@@ -32,18 +37,23 @@ func _run_soak() -> void:
 			player.call("_spawn_dart")
 		match frame_index:
 			150:
-				player.call("_cast_roaring_blessing")
+				player.mana = SniffPlayer.MAX_MANA
+				player.set("_backfire_override", 0)
+				player.call("_begin_tempest_covenant")
 			235:
+				player.mana = SniffPlayer.MAX_MANA
 				player.blessing = 7
-				player.call("_begin_explosive_surge")
+				player.set("_backfire_override", 0)
+				player.call("_begin_cataclysm_discharge")
 			360:
-				player.blessing = 3
-				player.call("_begin_thunder_dash")
-				player.set("_dash_charge", 0.88)
-				player.call("_release_thunder_dash")
+				player.mana = SniffPlayer.MAX_MANA
+				player.set("_backfire_override", 0)
+				player.call("_begin_heavenfall")
 			540:
-				player.blessing = SniffPlayer.MAX_BLESSING
-				player.call("_begin_divine_annihilation")
+				player.mana = SniffPlayer.MAX_MANA
+				player.blessing = 6
+				player.set("_backfire_override", 0)
+				player.call("_begin_worldstorm")
 		await physics_frame
 		await process_frame
 		if player.health < 52.0 and player.is_alive():
@@ -57,7 +67,7 @@ func _run_soak() -> void:
 		push_error("Sniff soak observed fewer than four player impacts.")
 		failed = true
 	if player.ultimate_cooldown <= 0.0:
-		push_error("Sniff soak did not complete Divine Annihilation.")
+		push_error("Sniff soak did not complete Worldstorm.")
 		failed = true
 
 	print("SOAK %s: %d Sniff impacts; %d enemy attacks connected." % ["FAIL" if failed else "PASS", int(metrics[&"hits"]), int(metrics[&"incoming"])])

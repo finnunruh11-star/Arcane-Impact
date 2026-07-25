@@ -48,6 +48,29 @@ func _check_arena_layout() -> void:
 	for structure: Rect2 in ArenaBackdrop.STRUCTURE_RECTS:
 		all_structures_inside = all_structures_inside and ArenaBackdrop.PLAYABLE_RECT.encloses(structure)
 	_expect(all_structures_inside and ArenaBackdrop.is_position_clear(Vector2(640.0, 360.0), 48.0), "structures stay inside the arena and leave the player spawn clear")
+	var spawn_probe := SurvivorRun.new()
+	var spawn_rng := spawn_probe.get("_rng") as RandomNumberGenerator
+	spawn_rng.seed = 73021
+	var spawn_bounds := ArenaBackdrop.PLAYABLE_RECT.grow(-SurvivorRun.SPAWN_EDGE_INSET)
+	var represented_sides: Dictionary = {}
+	var all_spawns_clear := true
+	for _spawn_index: int in 12:
+		var spawn_position: Vector2 = spawn_probe.call(&"_random_edge_position")
+		all_spawns_clear = all_spawns_clear and ArenaBackdrop.is_position_clear(spawn_position, SurvivorRun.SPAWN_CLEARANCE)
+		var side_distances := [
+			absf(spawn_position.y - spawn_bounds.position.y),
+			absf(spawn_position.x - spawn_bounds.end.x),
+			absf(spawn_position.y - spawn_bounds.end.y),
+			absf(spawn_position.x - spawn_bounds.position.x),
+		]
+		var closest_side := 0
+		for side_index: int in range(1, side_distances.size()):
+			if float(side_distances[side_index]) < float(side_distances[closest_side]):
+				closest_side = side_index
+		represented_sides[closest_side] = true
+	_expect(all_spawns_clear, "every perimeter spawn satisfies the same arena clearance used by enemy bodies")
+	_expect(represented_sides.size() == 4, "the shuffled perimeter bag distributes enemies across all four arena sides")
+	spawn_probe.free()
 
 
 func _check_adaptive_spawn_pacing() -> void:
@@ -226,11 +249,11 @@ func _check_progression_model() -> void:
 	_expect(is_equal_approx(progression.get_basic_attack_power_multiplier(), 2.15), "basic attacks gain a large independent power evolution by level twenty")
 	_expect(progression.get_ability_tier(&"signature") == 2 and progression.get_ability_tier(&"ability_1") == 1, "run levels do not upgrade active abilities")
 	var sniff_options: Array[Dictionary] = progression.roll_options(rng, 11)
-	var found_thunder_dash := false
+	var found_heavenfall := false
 	for option: Dictionary in sniff_options:
 		if option[&"id"] == &"signature":
-			found_thunder_dash = String(option[&"title"]).contains("THUNDER DASH")
-	_expect(found_thunder_dash, "hero ability choices use the selected hero's identity")
+			found_heavenfall = String(option[&"title"]).contains("HEAVENFALL")
+	_expect(found_heavenfall, "hero ability choices use the selected hero's identity")
 
 
 func _check_tier_behavior_contracts() -> void:
@@ -239,8 +262,9 @@ func _check_tier_behavior_contracts() -> void:
 	await process_frame
 	sniff_tier_one.set_survivor_mode(true)
 	sniff_tier_one.set_survivor_ability_progress(&"signature", 1, 1, 0.58, 1.32)
-	sniff_tier_one.call(&"_begin_thunder_dash")
-	_expect(not sniff_tier_one.is_dash_charging(), "tier-one Thunder Dash releases instantly without a charge state")
+	sniff_tier_one.aim_direction = Vector2.RIGHT
+	sniff_tier_one.call(&"_begin_heavenfall")
+	_expect(is_equal_approx(sniff_tier_one.get_active_spell_radius(), 230.0), "tier-one Heavenfall begins with a compact impact radius")
 	sniff_tier_one.queue_free()
 	await process_frame
 
@@ -249,8 +273,9 @@ func _check_tier_behavior_contracts() -> void:
 	await process_frame
 	sniff_tier_three.set_survivor_mode(true)
 	sniff_tier_three.set_survivor_ability_progress(&"signature", 1, 3, 1.0, 1.0)
-	sniff_tier_three.call(&"_begin_thunder_dash")
-	_expect(sniff_tier_three.is_dash_charging(), "tier-three Thunder Dash retains the original charge state")
+	sniff_tier_three.aim_direction = Vector2.RIGHT
+	sniff_tier_three.call(&"_begin_heavenfall")
+	_expect(is_equal_approx(sniff_tier_three.get_active_spell_radius(), SniffPlayer.HEAVENFALL_BASE_RADIUS), "tier-three Heavenfall retains its full baseline storm radius")
 	sniff_tier_three.queue_free()
 	await process_frame
 
@@ -261,23 +286,23 @@ func _check_tier_behavior_contracts() -> void:
 	sniff_tier_five.set_survivor_ability_progress(&"signature", 1, 5, 1.62, 0.74)
 	sniff_tier_five.global_position = Vector2(200.0, 360.0)
 	sniff_tier_five.aim_direction = Vector2.RIGHT
-	var route_target := ReliquaryPursuer.new()
-	route_target.configure(sniff_tier_five, 0)
-	route_target.global_position = Vector2(350.0, 440.0)
-	root.add_child(route_target)
+	var distant_storm_target := ReliquaryPursuer.new()
+	distant_storm_target.configure(sniff_tier_five, 1)
+	distant_storm_target.max_health = 1200.0
+	distant_storm_target.health = distant_storm_target.max_health
+	distant_storm_target.global_position = Vector2(1300.0, 360.0)
+	root.add_child(distant_storm_target)
 	await process_frame
-	route_target.process_mode = Node.PROCESS_MODE_DISABLED
-	var route_target_health := route_target.health
+	distant_storm_target.process_mode = Node.PROCESS_MODE_DISABLED
+	var distant_target_health := distant_storm_target.health
 	sniff_tier_five.call(&"_set_using_gamepad", true)
 	sniff_tier_five.aim_direction = Vector2.RIGHT
-	sniff_tier_five.call(&"_begin_thunder_dash")
-	sniff_tier_five.set("_dash_charge", 1.0)
-	sniff_tier_five.call(&"_release_thunder_dash")
-	for _frame: int in 8:
-		await physics_frame
-		await process_frame
-	_expect(route_target.health < route_target_health, "tier-five Thunder Dash detonates enemies beside the traversed route")
-	route_target.queue_free()
+	sniff_tier_five.set("_backfire_override", 0)
+	sniff_tier_five.call(&"_begin_heavenfall")
+	_expect(is_equal_approx(sniff_tier_five.get_active_spell_radius(), 500.0), "tier-five Heavenfall grows beyond its tier-three impact geometry")
+	sniff_tier_five.call(&"_resolve_heavenfall")
+	_expect(distant_storm_target.health < distant_target_health, "tier-five Heavenfall reaches and damages distant crowds")
+	distant_storm_target.queue_free()
 	sniff_tier_five.queue_free()
 	await process_frame
 

@@ -165,8 +165,8 @@ held movement input when available and otherwise use the current aim direction.
 ### Health
 
 Health reaches zero when the hero is defeated. Kat has 340 maximum health,
-Sniff and Fin have 245, and Nad has 220. Sniff's ability health costs cannot reduce
-health below 1, but enemy attacks still can.
+Sniff and Fin have 245, and Nad has 220. Sniff's Voltaic overload and spell
+feedback are real self-damage and can defeat him.
 
 ### Resolve and stagger
 
@@ -314,73 +314,85 @@ affected enemy up to the Ward cap, and spends all Vitality.
 4. Cast Black Communion at 100 Vitality when several targets are cursed.
 5. Convert damage into healing and excess healing into Ward to stay in combat.
 
-## Sniff: Voltaic Gambler
+## Sniff: Storm Catastrophist
 
-Sniff is a fast ranged damage dealer who builds Blessing through successful
-hits, then wagers health and stacks for mobility and explosive area damage.
+Sniff is a fast ranged storm mage built around enormous, chaining lightning
+spells. His grand spells cover huge areas and can feed their power back into
+him, so every cast balances crowd destruction against Mana and lethal risk.
 
 ### Resources
 
-- **Health:** 245 maximum. Ability costs are nonlethal.
+- **Health:** 245 maximum. Overload and spell backfires can reduce it to zero.
 - **Resolve:** 138 maximum.
-- **Mana:** 130 maximum and regenerates 8.5 per second. Every lightning action
-  spends Mana, so repeated casts exhaust Sniff quickly.
-- **Blessing of Roaring Thunder:** 0-10 stacks. Lightning Dart and Thunder Dash
-  hits build stacks. Damage from several abilities scales with current or spent
-  Blessing. Reaching 10 displays **Thunder Crowned**.
-- **Overcharge:** Roaring Blessing guarantees Lightning Dart chains for 3.8
-  seconds.
+- **Mana:** 130 maximum and regenerates 8.5 per second. Each grand spell costs
+  more than half of base Mana, preventing consecutive casts without recovery.
+- **Voltaic Load:** 0-10 stacks, unlocked by learning Tempest Covenant. A
+  Heavenfall, Tempest Covenant, Cataclysm Discharge, or Worldstorm that damages
+  at least one enemy grants exactly one Load, regardless of target count.
+  Lightning Dart and Flashstep never grant Load.
+- **Load bonuses:** each stack grants 2.5% movement speed and 5.5% spell power.
+- **Overload:** at seven Load, Sniff takes storm feedback every 0.8 seconds.
+  The first tick deals 2 damage; each stack above seven adds 1.25 damage.
+- **Backfire:** every grand spell has a feedback chance that rises with its
+  Load snapshot, up to 58%. Backfire deals real, potentially lethal self-damage.
 
 ### Lightning Dart
 
 **Input:** Left mouse / Right trigger
 **Cost:** 6 Mana
 
-Fires a fast collision-backed projectile. A direct hit builds one Blessing and
-has a 30% chance to chain to a second enemy within 265 pixels. Overcharge makes
-the chain guaranteed. At seven or more Blessing when fired, the chain can jump
-to two nearby enemies instead of one. Every successful chain hit also grants
-one Blessing.
+Fires a fast collision-backed projectile. A direct hit has a 30% chain chance
+at tier 1; tier 2 and above always chain when another
+target is in range. At full tier 3, the bolt can jump through two additional
+targets within 320 pixels. Lightning Dart preserves Sniff's quick ranged
+pressure but never generates Voltaic Load.
 
-The direct hit starts at 18 damage and gains 8.5% damage per Blessing snapshot.
+The direct hit starts at 18 damage and gains 8.5% damage per Load snapshot.
 Each chain step deals 72% of the previous depth's damage.
 
-### Thunder Dash
+### Heavenfall
 
-**Input:** Hold and release Right mouse / Left trigger
-**Cost:** 24 Mana
+**Input:** Right mouse / Left trigger<br>
+**Cost:** 72 Mana<br>
+**Cooldown:** 8 seconds
 
-Charge for up to 0.82 seconds. Charge controls travel distance from 185 to 445
-pixels and increases damage, Resolve damage, knockback, feedback, and partial
-invulnerability time. The dash uses movement direction when held, otherwise
-it follows aim.
+Calls a vertical bolt 500 pixels along Sniff's aim after a 0.64-second cast.
+At full tier 3, the impact covers a 340-pixel radius and chains through up to
+10 targets. Each target takes 74 base health and 62 base Resolve damage, plus
+4 health and 3 Resolve damage per Load in the cast snapshot.
 
-On release, it spends up to three Blessing. Each spent stack adds 16% damage.
-Sniff phases through enemy bodies while the attack sensor damages every crossed
-enemy once. Each successful Dash hit rebuilds one Blessing.
+Heavenfall grants one Load if any target takes damage. Its base backfire chance
+is 7%, plus 2.5 percentage points per snapshotted Load.
 
-### Roaring Blessing
+### Tempest Covenant
 
-**Input:** Q / Right bumper  
-**Cooldown:** 8 seconds  
-**Cost:** 30 Mana and 8% of maximum health
+**Input:** Q / Right bumper<br>
+**Cooldown:** 12 seconds<br>
+**Cost:** 76 Mana
 
-Immediately grants four Blessing and Overcharge for 3.8 seconds. Use it to
-force Dart chains, reach Thunder Crowned quickly, or prepare a large Surge.
-The health cost cannot defeat Sniff by itself.
+Learning this ability unlocks Voltaic Load. After a 0.82-second cast, it creates
+a 520-pixel storm 430 pixels along aim and chains through up to 10 enemies.
+The first target takes 58 base health and 48 base Resolve damage, plus Load
+scaling; each later link retains 91% of the previous link's damage.
 
-### Explosive Surge
+A successful Covenant grants one Load. Its base backfire chance is 10%, plus
+2.5 percentage points per snapshotted Load.
 
-**Input:** E / Left bumper  
-**Cooldown:** 7.5 seconds  
-**Cost:** 38 Mana, 10% of maximum health, and all current Blessing
+### Cataclysm Discharge
 
-Consumes every Blessing stack and detonates a circular hitbox around Sniff
-after 0.27 seconds. Its radius is 148 pixels plus 8 per stack spent. It deals
-31 base health damage plus 7 per stack, 34 base Resolve damage plus 4.5 per
-stack, and increasingly strong knockback and impact feedback.
+**Input:** E / Left bumper<br>
+**Cooldown:** 14 seconds<br>
+**Cost:** 84 Mana and at least one Voltaic Load
 
-A zero-stack Surge is legal but much weaker. The health cost is nonlethal.
+Consumes every current Load and snapshots it for an expanding detonation around
+Sniff after a 0.82-second cast. At full tier 3, its radius is 390 pixels plus
+52 per Load. It deals 42 base health damage plus 14 per Load and 55 base Resolve
+damage plus 9 per Load, reaching a 910-pixel radius and 182 base health damage
+at 10 Load before spell-power scaling.
+
+If Discharge damages at least one target, it seeds the next cycle with one new
+Load. Its backfire chance rises faster than the other spells as stored power
+increases, and its feedback damage also scales sharply with the consumed Load.
 
 ### Flashstep
 
@@ -390,33 +402,33 @@ A zero-stack Surge is legal but much weaker. The health cost is nonlethal.
 
 Phases 158 pixels in the movement or aim direction. Sniff is invulnerable for
 0.23 seconds, passes through enemy bodies, and damages every crossed enemy once.
-Flashstep damage increases slightly with current Blessing but does not spend or
-build stacks.
+Flashstep damage increases slightly with current Load but does not spend or
+build it.
 
-### Divine Annihilation
+### Worldstorm
 
-**Input:** R / Xbox Y  
-**Cooldown:** 20 seconds  
-**Cost:** 70 Mana, 15% of maximum health, and all current Blessing
+**Input:** R / Xbox Y<br>
+**Cooldown:** 28 seconds<br>
+**Cost:** 96 Mana
 
-After a 0.68-second cast, strikes every living enemy within 560 pixels and
-chains a visible lightning arc through the affected group. It deals 68 base
-health damage plus 9 per Blessing spent, and 82 base Resolve damage plus 6 per
-stack, with maximum hit-stop, shake, flash, and rumble.
+After a 1.1-second cast, strikes every living enemy within 1050 pixels and
+chains visible lightning through the entire group. It deals 105 base health
+damage plus 8 per snapshotted Load and 112 base Resolve damage plus 7 per Load,
+with maximum hit-stop, shake, flash, and rumble.
 
-Casting at 10 Blessing is **crowned** and grants 1.72 seconds of invulnerability,
-covering the cast and its immediate recovery. The health cost is nonlethal.
+Worldstorm does not consume existing Load and grants one more if it hits. Its
+base backfire chance is 14%, plus 2.5 percentage points per snapshotted Load,
+making a fully loaded cast both devastating and dangerous.
 
 ### Sniff combat loop
 
-1. Land Lightning Darts to build Blessing safely.
-2. Use Roaring Blessing to trade health for four stacks and guaranteed chains.
-3. Dash through lines of enemies, spending up to three stacks and rebuilding
-   them on successful hits.
-4. Spend a large stack count on Explosive Surge when enemies surround you.
-5. Reach 10 Blessing before Divine Annihilation for maximum damage and crowned
-   invulnerability.
-6. Use Flashstep to cross attacks, reposition, and preserve health for wagers.
+1. Use Lightning Darts for cheap pressure while Mana recovers; they do not add Load.
+2. Land Tempest Covenant to unlock and begin the Voltaic Load cycle.
+3. Alternate successful grand spells to gain speed and power one stack at a time.
+4. Decide whether to Discharge before seven Load or accept overload damage for
+  a larger crowd wipe.
+5. Use Worldstorm on a spread-out horde, but respect its rising feedback chance.
+6. Flashstep through attacks without changing the Load prepared for Discharge.
 
 ## Nad: Eldritch Tactician
 
@@ -429,7 +441,7 @@ targets with Arcane Conduit.
 
 - **Health:** 220 maximum.
 - **Resolve:** 160 maximum.
-- **Mana:** 0-100 with only 3 passive regeneration per second. The Mana
+- **Mana:** 0-120 with 5 passive regeneration per second. The Mana
   attribute increases capacity and regeneration. Every spell spends Mana,
   including Fold Space.
 - **Mental Focus:** enemies can hold up to five stacks. Focus lasts until its
@@ -439,9 +451,9 @@ targets with Arcane Conduit.
 - **Eldritch Lock:** cancels the target's current attack, freezes movement, and
   exposes its Focus vulnerability. Mental Cascade extends only an existing
   Lock; it does not create one on an uncontrolled target.
-- **Arcane Recursion:** a successful Mental Cascade grants 8 additional Mana
-  regeneration per second for 4 seconds. Foresee, Mantle, Anchors, and Conduit
-  do not directly refund Mana.
+- **Arcane Recursion:** a successful Mental Cascade restores 10 Mana immediately
+  and grants 11 additional Mana regeneration per second for 5 seconds. A
+  successful Foresee refunds 2 Mana; other spells do not directly refund Mana.
 
 Nad's visuals and mechanics become progressively more eldritch as each skill's
 own rank raises its tier. Tier 3 preserves the original complete skill; tier 4
@@ -451,7 +463,7 @@ living walls, shared mental systems, hungry rifts, and an abyssal transformation
 ### Foresee
 
 **Input:** Left mouse / Right trigger<br>
-**Cost:** 7 Mana
+**Cost:** 5 Mana
 
 Projects a narrow 242-pixel collision probe. The nearest enemy in the probe
 gains one Mental Focus for 7 seconds and is locked for 0.24 seconds plus 0.05
@@ -459,12 +471,13 @@ seconds per Focus stack it already held. Foresee deals 7 base health damage
 plus 1 per resulting Focus stack and 17 base Resolve damage plus 2 per stack.
 
 Use repeated Foresee hits to prepare one priority target while conserving Mana.
-Primary input pressed during another action is buffered for 0.12 seconds.
+A successful hit refunds 2 Mana. Primary input pressed during another action
+is buffered for 0.12 seconds.
 
 ### Eldritch Mantle
 
 **Input:** Hold and release Right mouse / Left trigger<br>
-**Cost:** 32 Mana
+**Cost:** 28 Mana
 
 Charge for up to 1.05 seconds while moving slowly. The remote field grows from
 135 to 230 pixels in radius and moves from 185 to 265 pixels along Nad's aim.
@@ -483,7 +496,7 @@ multiple windups or establish the long Lock window that Cascade can extend.
 ### Terrain Anchor
 
 **Input:** Q / Right bumper<br>
-**Cost:** 18 Mana per Anchor<br>
+**Cost:** 15 Mana per Anchor<br>
 **Placement cooldown:** 0.75 seconds<br>
 **Collapse cooldown:** 8 seconds
 
@@ -500,15 +513,15 @@ more concentrated collapse.
 ### Mental Cascade
 
 **Input:** E / Left bumper<br>
-**Cost:** 24 Mana<br>
+**Cost:** 22 Mana<br>
 **Cooldown:** 6.5 seconds
 
 Projects a broad 324-pixel collision cone. Every target gains one Focus for 8
 seconds and takes 14 health damage plus 2.5 per Focus stack it held before the
 hit. If a target was already locked, Cascade extends that Lock by 0.55 seconds
 plus 0.1 per previous Focus stack, up to 6 seconds remaining. Hitting at least
-one enemy starts Arcane Recursion: +8 Mana regeneration per second for 4 seconds
-on top of Nad's passive regeneration.
+one enemy restores 10 Mana immediately and starts Arcane Recursion: +11 Mana
+regeneration per second for 5 seconds on top of Nad's passive regeneration.
 
 Cast Cascade after Mantle or an Anchor collapse. Casting it first builds Focus
 and damage but deliberately provides no free lockdown.
@@ -517,7 +530,7 @@ and damage but deliberately provides no free lockdown.
 
 **Input:** Space / Xbox A<br>
 **Cooldown:** 2.8 seconds<br>
-**Cost:** 14 Mana
+**Cost:** 10 Mana
 
 Phases 168 pixels in the movement direction, or aim direction when no movement
 input is held. Nad ignores damage for 0.22 seconds and passes through enemy
@@ -527,7 +540,7 @@ for lining up fields while Arcane Recursion rebuilds Mana.
 ### Arcane Conduit
 
 **Input:** R / Xbox Y<br>
-**Cost:** 50 Mana<br>
+**Cost:** 48 Mana<br>
 **Cooldown:** 22 seconds
 
 After a 0.64-second cast, Conduit strikes every enemy within 600 pixels. Nad is
@@ -553,12 +566,12 @@ form duration until Nad returns to normal.
 1. Build Focus on priority enemies with Foresee.
 2. Place Anchors where enemies must chase or where their paths overlap.
 3. Charge Mantle into a group to interrupt attacks and establish a long Lock.
-4. Land Mental Cascade to extend that Lock and trigger four seconds of Arcane
+4. Land Mental Cascade to extend that Lock and trigger five seconds of Arcane
   Recursion.
 5. Collapse three Anchors when enemies occupy their fields.
 6. Cast Arcane Conduit while several focused targets are still locked.
-7. Spend the Recursion window on another setup spell or Fold Space, then play
-  defensively during Nad's slow passive recovery.
+7. Spend the Recursion window on another setup spell or Fold Space, using
+  Foresee hit refunds to bridge the gaps between larger casts.
 
 ## Fin: Shadow Artificer
 
@@ -725,12 +738,13 @@ every 10 seconds.
 
 The upper-left panel shows the selected hero's health, Mana, Resolve, state,
 and hero-specific resources. Kat also shows Ward over health, a Vitality bar,
-and active Choir/Halo drains; Sniff shows ten discrete Blessing pips. Nad shows
+and active Choir/Halo drains; Sniff shows ten Voltaic Load pips and flags the
+seven-stack overload threshold. Nad shows
 total active Mental Focus, locked-enemy count, and tier-dependent Anchor pips.
 Fin shows his current form, total active Pierce Marks, Ward, concealment,
 Crossbow reload, traps, and tool supplies. The bottom slots show keyboard
 or Xbox glyphs automatically, cooldown progress, readiness, resource
-requirements, and Sniff's health prices.
+requirements, and Sniff's high Mana prices.
 
 The upper-center panel shows the wave and number of living enemies. Large
 center announcements identify waves, resource milestones, and ultimate casts.

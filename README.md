@@ -26,13 +26,14 @@ Kat, the Vampiric Bulwark, features:
 - mana-draining toggle versions of Leech Choir and Mourning Halo;
 - health, Mana, Ward, Resolve, curse stacks, lifesteal, and Vitality.
 
-Sniff, the Voltaic Gambler, features:
+Sniff, the Storm Catastrophist, features:
 
 - fast collision-backed Lightning Darts with nearby-target chaining;
-- a charged, enemy-phasing Thunder Dash that spends and rebuilds Blessing;
-- Roaring Blessing and Explosive Surge health wagers;
-- an invulnerable damaging Flashstep and crowned Divine Annihilation;
-- a deliberately hungry Mana economy layered over ten-stack Blessing wagers.
+- four enormous chain-lightning spells that each consume more than half of base Mana;
+- Voltaic Load from successful offensive ability casts, increasing speed and spell power;
+- Cataclysm Discharge, which consumes Load to scale into a crowd wipe;
+- overload damage and spell backfires that can genuinely kill their caster;
+- retained Lightning Darts and a fast, invulnerable Flashstep that grant no Load.
 
 Nad, the Eldritch Tactician, features:
 
@@ -40,7 +41,7 @@ Nad, the Eldritch Tactician, features:
 - charged remote Eldritch Mantle fields with collision-matched lockdown zones;
 - three persistent Terrain Anchors that slow enemies and collapse together;
 - low direct damage, Mental Cascade lock extension, and a prepared Arcane Conduit;
-- low passive Mana recovery plus Arcane Recursion after successful Cascades;
+- 120 Mana, hit refunds, and a strong five-second Arcane Recursion window;
 - Mantle tentacle executions and a rank-20, ten-second Eldritch Form capstone.
 
 Fin, the Shadow Artificer, features:
@@ -135,11 +136,11 @@ after unlocking.
 | Action | Keyboard and mouse | Xbox controller |
 | --- | --- | --- |
 | Lightning Dart | Left mouse | Right trigger |
-| Thunder Dash | Hold/release right mouse | Hold/release left trigger |
-| Roaring Blessing | Q | Right bumper |
-| Explosive Surge | E | Left bumper |
+| Heavenfall | Right mouse | Left trigger |
+| Tempest Covenant | Q | Right bumper |
+| Cataclysm Discharge | E | Left bumper |
 | Flashstep | Space | A |
-| Divine Annihilation | R | Y |
+| Worldstorm | R | Y |
 
 ### Nad
 

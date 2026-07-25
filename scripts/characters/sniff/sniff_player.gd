@@ -19,15 +19,15 @@ enum State {
 	FREE,
 	DART_STARTUP,
 	DART_RECOVERY,
-	DASH_CHARGE,
-	DASH_ACTIVE,
-	DASH_RECOVERY,
-	BLESSING_RECOVERY,
-	SURGE_STARTUP,
-	SURGE_RECOVERY,
+	HEAVENFALL_STARTUP,
+	HEAVENFALL_RECOVERY,
+	TEMPEST_STARTUP,
+	TEMPEST_RECOVERY,
+	DISCHARGE_STARTUP,
+	DISCHARGE_RECOVERY,
 	FLASHSTEP,
-	ULTIMATE_STARTUP,
-	ULTIMATE_RECOVERY,
+	WORLDSTORM_STARTUP,
+	WORLDSTORM_RECOVERY,
 	STAGGER,
 	DEAD,
 }
@@ -35,22 +35,29 @@ enum State {
 const MAX_HEALTH := 245.0
 const MAX_RESOLVE := 138.0
 const MAX_MANA := 130.0
-const MAX_BLESSING := 10
+const MAX_VOLTAIC_LOAD := 10
+const MAX_BLESSING := MAX_VOLTAIC_LOAD
 const MOVE_SPEED := 332.0
 const BASE_MANA_REGEN := 8.5
 const DART_MANA_COST := 6.0
-const DASH_MANA_COST := 24.0
-const BLESSING_MANA_COST := 30.0
-const SURGE_MANA_COST := 38.0
+const HEAVENFALL_MANA_COST := 72.0
+const TEMPEST_MANA_COST := 76.0
+const DISCHARGE_MANA_COST := 84.0
 const FLASHSTEP_MANA_COST := 16.0
-const ANNIHILATION_MANA_COST := 70.0
+const WORLDSTORM_MANA_COST := 96.0
 const INPUT_BUFFER_DURATION := 0.12
-const DASH_MIN_DISTANCE := 185.0
-const DASH_MAX_DISTANCE := 445.0
 const FLASHSTEP_COOLDOWN := 0.75
-const SURGE_BASE_RADIUS := 148.0
-const SURGE_STACK_RADIUS := 8.0
-const ULTIMATE_RADIUS := 560.0
+const HEAVENFALL_BASE_RADIUS := 340.0
+const TEMPEST_BASE_RADIUS := 520.0
+const DISCHARGE_BASE_RADIUS := 390.0
+const DISCHARGE_STACK_RADIUS := 52.0
+const WORLDSTORM_BASE_RADIUS := 1050.0
+const LOAD_MOVE_SPEED_PER_STACK := 0.025
+const LOAD_POWER_PER_STACK := 0.055
+const OVERLOAD_THRESHOLD := 7
+const OVERLOAD_TICK_INTERVAL := 0.80
+const OVERLOAD_BASE_DAMAGE := 2.0
+const OVERLOAD_DAMAGE_PER_EXCESS_STACK := 1.25
 
 var health := MAX_HEALTH
 var resolve := MAX_RESOLVE
@@ -60,6 +67,7 @@ var aim_direction := Vector2.RIGHT
 var debug_draw_enabled := false
 var chain_chance := 0.30
 
+var heavenfall_cooldown := 0.0
 var blessing_cooldown := 0.0
 var surge_cooldown := 0.0
 var flashstep_cooldown := 0.0
@@ -69,19 +77,15 @@ var _state := State.FREE
 var _state_time := 0.0
 var _using_gamepad := false
 var _primary_buffer := 0.0
-var _dash_charge := 0.0
 var _dash_direction := Vector2.RIGHT
 var _dash_speed := 0.0
-var _dash_spent := 0
-var _dash_origin := Vector2.ZERO
-var _dash_last_burst := Vector2.ZERO
-var _dash_detonated_ids: Dictionary = {}
-var _surge_spent := 0
-var _surge_radius := SURGE_BASE_RADIUS
-var _ultimate_snapshot := 0
-var _ultimate_crowned := false
+var _spell_center := Vector2.ZERO
+var _spell_radius := HEAVENFALL_BASE_RADIUS
+var _spell_load_snapshot := 0
+var _backfire_override := -1
+var _last_spell_backfired := false
 var _invulnerable_time := 0.0
-var _overcharge_time := 0.0
+var _overload_tick_remaining := OVERLOAD_TICK_INTERVAL
 var _knockback_velocity := Vector2.ZERO
 var _hit_target_ids: Dictionary = {}
 var _attack_area: Area2D
@@ -153,7 +157,7 @@ func set_survivor_power_multiplier(multiplier: float) -> void:
 
 
 func get_survivor_power_multiplier() -> float:
-	return _survivor_power_multiplier
+	return _survivor_power_multiplier * get_voltaic_power_multiplier()
 
 
 func set_survivor_basic_attack_progress(tier: int, power: float) -> void:
@@ -234,7 +238,19 @@ func get_mana_regen_per_second() -> float:
 
 
 func get_move_speed() -> float:
-	return MOVE_SPEED * _survivor_stats.get_move_speed_multiplier()
+	return MOVE_SPEED * _survivor_stats.get_move_speed_multiplier() * get_voltaic_move_speed_multiplier()
+
+
+func is_voltaic_load_unlocked() -> bool:
+	return not _survivor_mode or _survivor_abilities.is_unlocked(&"ability_1")
+
+
+func get_voltaic_power_multiplier() -> float:
+	return 1.0 + float(blessing) * LOAD_POWER_PER_STACK if is_voltaic_load_unlocked() else 1.0
+
+
+func get_voltaic_move_speed_multiplier() -> float:
+	return 1.0 + float(blessing) * LOAD_MOVE_SPEED_PER_STACK if is_voltaic_load_unlocked() else 1.0
 
 
 func get_survivor_health_regen() -> float:
@@ -282,14 +298,28 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_timers(delta: float) -> void:
+	heavenfall_cooldown = maxf(0.0, heavenfall_cooldown - _survivor_cooldown_delta(delta, &"signature"))
 	blessing_cooldown = maxf(0.0, blessing_cooldown - _survivor_cooldown_delta(delta, &"ability_1"))
 	surge_cooldown = maxf(0.0, surge_cooldown - _survivor_cooldown_delta(delta, &"ability_2"))
 	flashstep_cooldown = maxf(0.0, flashstep_cooldown - _survivor_cooldown_delta(delta, &"evade"))
 	ultimate_cooldown = maxf(0.0, ultimate_cooldown - _survivor_cooldown_delta(delta, &"ultimate"))
 	_invulnerable_time = maxf(0.0, _invulnerable_time - delta)
-	_overcharge_time = maxf(0.0, _overcharge_time - delta)
 	resolve = minf(get_max_resolve(), resolve + delta * 6.5)
 	mana = minf(get_max_mana(), mana + get_mana_regen_per_second() * delta)
+	_tick_voltaic_overload(delta)
+
+
+func _tick_voltaic_overload(delta: float) -> void:
+	if not is_voltaic_load_unlocked() or blessing < OVERLOAD_THRESHOLD or _state == State.DEAD:
+		_overload_tick_remaining = OVERLOAD_TICK_INTERVAL
+		return
+	_overload_tick_remaining -= delta
+	if _overload_tick_remaining > 0.0:
+		return
+	_overload_tick_remaining += OVERLOAD_TICK_INTERVAL
+	var excess_stacks := blessing - OVERLOAD_THRESHOLD
+	var feedback_damage := OVERLOAD_BASE_DAMAGE + float(excess_stacks) * OVERLOAD_DAMAGE_PER_EXCESS_STACK
+	_apply_storm_feedback(feedback_damage, false)
 
 
 func _update_buffers(delta: float) -> void:
@@ -328,7 +358,7 @@ func _update_state(delta: float) -> void:
 			_state_time -= delta
 			if _state_time <= 0.0:
 				_spawn_dart()
-		State.DART_RECOVERY, State.DASH_RECOVERY, State.BLESSING_RECOVERY, State.SURGE_RECOVERY, State.ULTIMATE_RECOVERY, State.STAGGER:
+		State.DART_RECOVERY, State.HEAVENFALL_RECOVERY, State.TEMPEST_RECOVERY, State.DISCHARGE_RECOVERY, State.WORLDSTORM_RECOVERY, State.STAGGER:
 			_state_time -= delta
 			if _state_time <= 0.0:
 				if _primary_buffer > 0.0 and _state != State.STAGGER:
@@ -336,24 +366,18 @@ func _update_state(delta: float) -> void:
 					_begin_dart()
 				else:
 					_set_state(State.FREE)
-		State.DASH_CHARGE:
-			var charge_duration := [0.0, 0.42, 0.82, 0.98, 1.10][get_survivor_ability_tier(&"signature") - 1] as float
-			_dash_charge = 1.0 if charge_duration <= 0.0 else minf(1.0, _dash_charge + delta / charge_duration)
-			if not Input.is_action_pressed(&"signature") or _dash_charge >= 1.0:
-				_release_thunder_dash()
-		State.DASH_ACTIVE:
-			_apply_dash_hits()
-			_apply_dash_route_detonations()
+		State.HEAVENFALL_STARTUP:
 			_state_time -= delta
 			if _state_time <= 0.0:
-				_attack_area.monitoring = false
-				_set_enemy_phasing(false)
-				_state_time = 0.19
-				_set_state(State.DASH_RECOVERY)
-		State.SURGE_STARTUP:
+				_resolve_heavenfall()
+		State.TEMPEST_STARTUP:
 			_state_time -= delta
 			if _state_time <= 0.0:
-				_resolve_explosive_surge()
+				_resolve_tempest_covenant()
+		State.DISCHARGE_STARTUP:
+			_state_time -= delta
+			if _state_time <= 0.0:
+				_resolve_cataclysm_discharge()
 		State.FLASHSTEP:
 			_apply_flashstep_hits()
 			_state_time -= delta
@@ -363,26 +387,26 @@ func _update_state(delta: float) -> void:
 				if get_survivor_ability_tier(&"evade") >= 4:
 					_resolve_flashstep_arrival()
 				_state_time = 0.09
-				_set_state(State.DASH_RECOVERY)
-		State.ULTIMATE_STARTUP:
+				_set_state(State.HEAVENFALL_RECOVERY)
+		State.WORLDSTORM_STARTUP:
 			_state_time -= delta
 			if _state_time <= 0.0:
-				_resolve_divine_annihilation()
+				_resolve_worldstorm()
 		State.DEAD:
 			pass
 
 
 func _handle_free_inputs() -> void:
 	if Input.is_action_just_pressed(&"ultimate") and is_survivor_ability_unlocked(&"ultimate") and ultimate_cooldown <= 0.0:
-		_begin_divine_annihilation()
+		_begin_worldstorm()
 	elif Input.is_action_just_pressed(&"ability_1") and is_survivor_ability_unlocked(&"ability_1") and blessing_cooldown <= 0.0:
-		_cast_roaring_blessing()
+		_begin_tempest_covenant()
 	elif Input.is_action_just_pressed(&"ability_2") and is_survivor_ability_unlocked(&"ability_2") and surge_cooldown <= 0.0:
-		_begin_explosive_surge()
+		_begin_cataclysm_discharge()
 	elif Input.is_action_just_pressed(&"evade") and is_survivor_ability_unlocked(&"evade") and flashstep_cooldown <= 0.0:
 		_begin_flashstep()
-	elif Input.is_action_just_pressed(&"signature") and is_survivor_ability_unlocked(&"signature"):
-		_begin_thunder_dash()
+	elif Input.is_action_just_pressed(&"signature") and is_survivor_ability_unlocked(&"signature") and heavenfall_cooldown <= 0.0:
+		_begin_heavenfall()
 	elif Input.is_action_just_pressed(&"primary") or _primary_buffer > 0.0:
 		_primary_buffer = 0.0
 		_begin_dart()
@@ -410,18 +434,18 @@ func _update_movement() -> void:
 			speed_scale = 0.72
 		State.DART_RECOVERY:
 			speed_scale = 0.88
-		State.DASH_CHARGE:
-			speed_scale = 0.42
-		State.DASH_ACTIVE, State.FLASHSTEP:
+		State.FLASHSTEP:
 			velocity = _dash_direction * _dash_speed
 			return
-		State.DASH_RECOVERY, State.BLESSING_RECOVERY, State.SURGE_RECOVERY:
+		State.HEAVENFALL_STARTUP, State.TEMPEST_STARTUP:
+			speed_scale = 0.24
+		State.DISCHARGE_STARTUP:
+			speed_scale = 0.12
+		State.HEAVENFALL_RECOVERY, State.TEMPEST_RECOVERY, State.DISCHARGE_RECOVERY:
 			speed_scale = 0.72
-		State.SURGE_STARTUP:
-			speed_scale = 0.32
-		State.ULTIMATE_STARTUP:
+		State.WORLDSTORM_STARTUP:
 			speed_scale = 0.08
-		State.ULTIMATE_RECOVERY:
+		State.WORLDSTORM_RECOVERY:
 			speed_scale = 0.46
 		State.STAGGER, State.DEAD:
 			speed_scale = 0.0
@@ -457,13 +481,12 @@ func on_lightning_dart_hit(target: Node2D, at: Vector2, direction: Vector2, bles
 	var dealt := DamageResolver.apply_with_result(target, packet, direction)
 	if dealt <= 0.0:
 		return
-	gain_blessing(1)
 	effect_requested.emit(&"sniff_strike", at, direction, 0.82)
 	combat_impact.emit(at, direction, packet, 0.34 + float(blessing_snapshot) * 0.025)
 	lightning_arc_requested.emit(at - direction * 48.0, at, 0.48)
 
 	var tier := get_survivor_basic_attack_tier()
-	var should_chain := tier >= 2 or _overcharge_time > 0.0 or _rng.randf() <= chain_chance
+	var should_chain := tier >= 2 or _rng.randf() <= chain_chance
 	if not should_chain:
 		return
 	var candidates: Array[Node2D] = []
@@ -487,7 +510,6 @@ func on_lightning_dart_hit(target: Node2D, at: Vector2, direction: Vector2, bles
 		var chain_packet := DamagePacket.sniff_dart(self, blessing_snapshot, chain_index + 1)
 		var chain_dealt := DamageResolver.apply_with_result(chained_target, chain_packet, chain_direction)
 		if chain_dealt > 0.0:
-			gain_blessing(1)
 			lightning_arc_requested.emit(previous.global_position, chained_target.global_position, 0.72 - float(chain_index) * 0.12)
 			combat_impact.emit(chained_target.global_position, chain_direction, chain_packet, 0.28)
 			if tier >= 5:
@@ -496,142 +518,158 @@ func on_lightning_dart_hit(target: Node2D, at: Vector2, direction: Vector2, bles
 	audio_requested.emit(&"sniff_chain", clampf(float(candidates.size()) / 2.0, 0.35, 1.0))
 
 
-func _begin_thunder_dash() -> void:
-	if not _spend_mana(DASH_MANA_COST):
+func _begin_heavenfall() -> void:
+	if not _spend_mana(HEAVENFALL_MANA_COST):
 		return
-	_dash_charge = 0.0
-	_dash_direction = aim_direction
-	audio_requested.emit(&"sniff_dash_charge", 0.25)
-	_set_state(State.DASH_CHARGE)
-	if get_survivor_ability_tier(&"signature") == 1:
-		_release_thunder_dash()
-
-
-func _release_thunder_dash() -> void:
 	var tier := get_survivor_ability_tier(&"signature")
-	var move_input := Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
-	_dash_direction = move_input.normalized() if not move_input.is_zero_approx() else aim_direction
-	aim_direction = _dash_direction
-	_dash_spent = mini(3, blessing)
-	spend_blessing(_dash_spent)
-	var maximum_distance := [230.0, 340.0, DASH_MAX_DISTANCE, 535.0, 650.0][tier - 1] as float
-	var distance := lerpf(DASH_MIN_DISTANCE, maximum_distance, CombatMath.shaped_charge(_dash_charge))
-	_state_time = lerpf(0.16, 0.27 + 0.025 * float(maxi(0, tier - 3)), _dash_charge)
-	_dash_speed = distance / _state_time
-	_hit_target_ids.clear()
-	_dash_detonated_ids.clear()
-	_dash_origin = global_position
-	_dash_last_burst = global_position
-	_set_attack_radius(48.0)
-	_attack_area.monitoring = true
-	_set_enemy_phasing(true)
-	_invulnerable_time = maxf(_invulnerable_time, _state_time * 0.72)
-	effect_requested.emit(&"sniff_dash", global_position, _dash_direction, 1.0 + _dash_charge * 0.35)
-	audio_requested.emit(&"sniff_dash", _dash_charge)
-	lightning_arc_requested.emit(global_position, global_position + _dash_direction * distance, 0.42 + _dash_charge * 0.30)
-	_set_state(State.DASH_ACTIVE)
+	var cast_distances := [340.0, 410.0, 500.0, 590.0, 680.0]
+	var radii := [230.0, 280.0, HEAVENFALL_BASE_RADIUS, 410.0, 500.0]
+	_spell_center = global_position + aim_direction * (cast_distances[tier - 1] as float)
+	_spell_radius = radii[tier - 1] as float
+	_spell_load_snapshot = blessing
+	heavenfall_cooldown = 8.0
+	_state_time = [0.42, 0.52, 0.64, 0.72, 0.80][tier - 1] as float
+	audio_requested.emit(&"sniff_dash_charge", 0.72)
+	announcement_requested.emit("HEAVENFALL")
+	_set_state(State.HEAVENFALL_STARTUP)
+	stats_changed.emit()
 
 
-func _apply_dash_hits() -> void:
-	var packet := DamagePacket.sniff_dash(self, _dash_charge, _dash_spent)
-	_apply_traversal_hits(packet, true)
+func _resolve_heavenfall() -> void:
+	var tier := get_survivor_ability_tier(&"signature")
+	var target_limits := [4, 6, 10, 999, 999]
+	var targets := _collect_spell_targets(_spell_center, _spell_radius, target_limits[tier - 1] as int)
+	var sky_origin := _spell_center + Vector2(0.0, -maxf(620.0, _spell_radius * 1.65))
+	lightning_arc_requested.emit(sky_origin, _spell_center, 1.0)
+	thunder_burst_requested.emit(_spell_center, _spell_radius, 0.92, false)
+	effect_requested.emit(&"sniff_strike", _spell_center, Vector2.DOWN, 2.2 + 0.22 * float(tier))
+	var previous_arc := _spell_center
+	var hit_count := 0
+	for target: Node2D in targets:
+		var direction := (target.global_position - _spell_center).normalized()
+		var packet := DamagePacket.sniff_heavenfall(self, _spell_load_snapshot)
+		if DamageResolver.apply_with_result(target, packet, direction) <= 0.0:
+			continue
+		hit_count += 1
+		lightning_arc_requested.emit(previous_arc, target.global_position, 0.96)
+		combat_impact.emit(target.global_position, direction, packet, 0.88)
+		previous_arc = target.global_position
+	_reward_voltaic_load(&"signature", hit_count)
+	_resolve_spell_backfire(0.07, 11.0, _spell_load_snapshot)
+	audio_requested.emit(&"sniff_dash", 1.0)
+	_state_time = 0.38
+	_set_state(State.HEAVENFALL_RECOVERY)
 
 
-func _apply_dash_route_detonations() -> void:
-	if get_survivor_ability_tier(&"signature") < 5 or global_position.distance_to(_dash_last_burst) < 72.0:
+func _begin_tempest_covenant() -> void:
+	if not _spend_mana(TEMPEST_MANA_COST):
 		return
-	_dash_last_burst = global_position
-	thunder_burst_requested.emit(global_position, 104.0, 0.58, false)
+	var tier := get_survivor_ability_tier(&"ability_1")
+	var cast_distances := [300.0, 360.0, 430.0, 500.0, 560.0]
+	var radii := [380.0, 450.0, TEMPEST_BASE_RADIUS, 620.0, 760.0]
+	_spell_center = global_position + aim_direction * (cast_distances[tier - 1] as float)
+	_spell_radius = radii[tier - 1] as float
+	_spell_load_snapshot = blessing
+	blessing_cooldown = 12.0
+	_state_time = [0.62, 0.72, 0.82, 0.90, 1.0][tier - 1] as float
+	audio_requested.emit(&"sniff_blessing", 0.92)
+	announcement_requested.emit("TEMPEST COVENANT")
+	_set_state(State.TEMPEST_STARTUP)
+	stats_changed.emit()
+
+
+func _resolve_tempest_covenant() -> void:
+	var tier := get_survivor_ability_tier(&"ability_1")
+	var target_limits := [5, 7, 10, 14, 999]
+	var targets := _collect_spell_targets(_spell_center, _spell_radius, target_limits[tier - 1] as int)
+	var arc_origin := _spell_center + Vector2(0.0, -maxf(520.0, _spell_radius))
+	lightning_arc_requested.emit(arc_origin, _spell_center, 0.92)
+	thunder_burst_requested.emit(_spell_center, _spell_radius, 0.78, false)
+	effect_requested.emit(&"sniff_blessing", _spell_center, aim_direction, 2.4 + 0.18 * float(tier))
+	var hit_count := 0
+	for chain_index: int in targets.size():
+		var target := targets[chain_index]
+		var direction := (target.global_position - arc_origin).normalized()
+		var packet := DamagePacket.sniff_tempest(self, _spell_load_snapshot, chain_index)
+		if DamageResolver.apply_with_result(target, packet, direction) <= 0.0:
+			continue
+		hit_count += 1
+		lightning_arc_requested.emit(arc_origin, target.global_position, maxf(0.62, 1.0 - float(chain_index) * 0.035))
+		combat_impact.emit(target.global_position, direction, packet, 0.72)
+		if tier >= 4:
+			thunder_burst_requested.emit(target.global_position, 92.0 + 14.0 * float(tier), 0.54, false)
+		arc_origin = target.global_position
+	_reward_voltaic_load(&"ability_1", hit_count)
+	_resolve_spell_backfire(0.10, 13.0, _spell_load_snapshot)
+	audio_requested.emit(&"sniff_chain", 1.0)
+	_state_time = 0.46
+	_set_state(State.TEMPEST_RECOVERY)
+
+
+func _begin_cataclysm_discharge() -> void:
+	if blessing <= 0 or not _spend_mana(DISCHARGE_MANA_COST):
+		return
+	var tier := get_survivor_ability_tier(&"ability_2")
+	var base_radii := [300.0, 340.0, DISCHARGE_BASE_RADIUS, 450.0, 520.0]
+	var stack_radii := [38.0, 44.0, DISCHARGE_STACK_RADIUS, 60.0, 70.0]
+	_spell_center = global_position
+	_spell_load_snapshot = blessing
+	_spell_radius = (base_radii[tier - 1] as float) + (stack_radii[tier - 1] as float) * float(_spell_load_snapshot)
+	spend_blessing(_spell_load_snapshot)
+	surge_cooldown = 14.0
+	_state_time = [0.55, 0.68, 0.82, 0.92, 1.0][tier - 1] as float
+	audio_requested.emit(&"sniff_surge_charge", float(_spell_load_snapshot) / float(MAX_VOLTAIC_LOAD))
+	announcement_requested.emit("CATACLYSM DISCHARGE")
+	_set_state(State.DISCHARGE_STARTUP)
+	stats_changed.emit()
+
+
+func _resolve_cataclysm_discharge() -> void:
+	var targets := _collect_spell_targets(global_position, _spell_radius)
+	var arc_origin := global_position
+	var hit_count := 0
+	for target: Node2D in targets:
+		var direction := (target.global_position - global_position).normalized()
+		var packet := DamagePacket.sniff_discharge(self, _spell_load_snapshot)
+		if DamageResolver.apply_with_result(target, packet, direction) <= 0.0:
+			continue
+		hit_count += 1
+		lightning_arc_requested.emit(arc_origin, target.global_position, 1.0)
+		combat_impact.emit(target.global_position, direction, packet, 1.0)
+		arc_origin = target.global_position
+	thunder_burst_requested.emit(global_position, _spell_radius, clampf(0.35 + float(_spell_load_snapshot) * 0.065, 0.0, 1.0), true)
+	_reward_voltaic_load(&"ability_2", hit_count)
+	_resolve_spell_backfire(0.06 + float(_spell_load_snapshot) * 0.012, 7.0 + float(_spell_load_snapshot) * 2.4, _spell_load_snapshot)
+	audio_requested.emit(&"sniff_surge", clampf(float(_spell_load_snapshot) / float(MAX_VOLTAIC_LOAD), 0.35, 1.0))
+	_state_time = 0.58
+	_set_state(State.DISCHARGE_RECOVERY)
+	stats_changed.emit()
+
+
+func _collect_spell_targets(center: Vector2, radius: float, limit := 999) -> Array[Node2D]:
+	var targets: Array[Node2D] = []
 	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
 		if not enemy_node is Node2D:
 			continue
 		var target := enemy_node as Node2D
-		var target_id := target.get_instance_id()
-		if _dash_detonated_ids.has(target_id) or not _target_is_alive(target) or global_position.distance_to(target.global_position) > 104.0:
-			continue
-		_dash_detonated_ids[target_id] = true
-		var direction := (target.global_position - _dash_origin).normalized()
-		var detonation := DamagePacket.sniff_dash(self, _dash_charge, _dash_spent)
-		detonation.health_damage *= 0.46
-		detonation.resolve_damage *= 0.60
-		var dealt := DamageResolver.apply_with_result(target, detonation, direction)
-		if dealt > 0.0:
-			lightning_arc_requested.emit(_dash_last_burst - _dash_direction * 72.0, target.global_position, 0.82)
-			combat_impact.emit(target.global_position, direction, detonation, 0.52)
+		if _target_is_alive(target) and center.distance_to(target.global_position) <= radius:
+			targets.append(target)
+	targets.sort_custom(func(left: Node2D, right: Node2D) -> bool:
+		return center.distance_squared_to(left.global_position) < center.distance_squared_to(right.global_position)
+	)
+	if targets.size() > limit:
+		targets.resize(limit)
+	return targets
 
 
-func _cast_roaring_blessing() -> void:
-	if not _spend_mana(BLESSING_MANA_COST):
-		return
-	var tier := get_survivor_ability_tier(&"ability_1")
-	var costs := [0.12, 0.10, 0.08, 0.06, 0.04]
-	var gains := [2, 3, 4, 5, 7]
-	var durations := [2.0, 2.8, 3.8, 5.0, 6.5]
-	_apply_self_cost(get_max_health() * (costs[tier - 1] as float))
-	gain_blessing(gains[tier - 1] as int)
-	_overcharge_time = durations[tier - 1] as float
-	blessing_cooldown = 8.0
-	thunder_burst_requested.emit(global_position, 92.0, 0.48, false)
-	effect_requested.emit(&"sniff_blessing", global_position, aim_direction, 1.25)
-	audio_requested.emit(&"sniff_blessing", 0.82)
-	announcement_requested.emit("ROARING BLESSING")
-	_state_time = 0.24
-	_set_state(State.BLESSING_RECOVERY)
-	stats_changed.emit()
-
-
-func _begin_explosive_surge() -> void:
-	if not _spend_mana(SURGE_MANA_COST):
-		return
-	var tier := get_survivor_ability_tier(&"ability_2")
-	var stack_caps := [3, 6, MAX_BLESSING, MAX_BLESSING, MAX_BLESSING]
-	var health_costs := [0.13, 0.11, 0.10, 0.08, 0.05]
-	var base_radii := [104.0, 126.0, SURGE_BASE_RADIUS, 176.0, 220.0]
-	var stack_radii := [5.0, 6.0, SURGE_STACK_RADIUS, 10.0, 14.0]
-	_surge_spent = mini(blessing, stack_caps[tier - 1] as int)
-	spend_blessing(_surge_spent)
-	_apply_self_cost(get_max_health() * (health_costs[tier - 1] as float))
-	_surge_radius = (base_radii[tier - 1] as float) + (stack_radii[tier - 1] as float) * float(_surge_spent)
-	_set_attack_radius(_surge_radius)
-	_attack_area.monitoring = true
-	surge_cooldown = 7.5
-	_state_time = 0.27
-	audio_requested.emit(&"sniff_surge_charge", float(_surge_spent) / float(MAX_BLESSING))
-	_set_state(State.SURGE_STARTUP)
-	stats_changed.emit()
-
-
-func _resolve_explosive_surge() -> void:
-	var packet := DamagePacket.sniff_surge(self, _surge_spent)
-	var tier := get_survivor_ability_tier(&"ability_2")
-	var hit_count := 0
-	_hit_target_ids.clear()
-	for hurtbox: Area2D in _attack_area.get_overlapping_areas():
-		var target := hurtbox.get_parent() as Node2D
-		if not is_instance_valid(target) or not target.is_in_group(&"enemies"):
-			continue
-		var target_id := target.get_instance_id()
-		if _hit_target_ids.has(target_id):
-			continue
-		_hit_target_ids[target_id] = true
-		var direction := (target.global_position - global_position).normalized()
-		var dealt := DamageResolver.apply_with_result(target, packet, direction)
-		if dealt > 0.0:
-			hit_count += 1
-			if tier >= 4:
-				var echo := DamagePacket.sniff_surge(self, _surge_spent)
-				echo.health_damage *= 0.38 if tier == 4 else 0.64
-				echo.resolve_damage *= 0.52 if tier == 4 else 0.78
-				DamageResolver.apply(target, echo, direction)
-			combat_impact.emit(target.global_position, direction, packet, clampf(0.48 + float(_surge_spent) * 0.05, 0.0, 1.0))
-			lightning_arc_requested.emit(global_position, target.global_position, 0.55 + float(_surge_spent) * 0.035)
-	_attack_area.monitoring = false
-	thunder_burst_requested.emit(global_position, _surge_radius, float(_surge_spent) / float(MAX_BLESSING), false)
-	audio_requested.emit(&"sniff_surge", float(_surge_spent) / float(MAX_BLESSING))
-	if tier >= 5:
-		gain_blessing(mini(5, hit_count))
-	_state_time = 0.43
-	_set_state(State.SURGE_RECOVERY)
+func _resolve_spell_backfire(base_chance: float, base_damage: float, load_snapshot: int) -> bool:
+	var forced_result := _backfire_override
+	_backfire_override = -1
+	var backfire_chance := clampf(base_chance + float(load_snapshot) * 0.025, 0.0, 0.58)
+	_last_spell_backfired = forced_result > 0 or (forced_result < 0 and _rng.randf() < backfire_chance)
+	if _last_spell_backfired:
+		_apply_storm_feedback(base_damage * (1.0 + float(load_snapshot) * 0.08), true)
+	return _last_spell_backfired
 
 
 func _begin_flashstep() -> void:
@@ -660,7 +698,7 @@ func _begin_flashstep() -> void:
 
 
 func _apply_flashstep_hits() -> void:
-	_apply_traversal_hits(DamagePacket.sniff_flashstep(self, blessing), false)
+	_apply_traversal_hits(DamagePacket.sniff_flashstep(self, blessing))
 
 
 func _resolve_flashstep_arrival() -> void:
@@ -669,7 +707,6 @@ func _resolve_flashstep_arrival() -> void:
 	var packet := DamagePacket.sniff_flashstep(self, blessing)
 	packet.health_damage *= 0.72 if tier == 4 else 1.18
 	packet.resolve_damage *= 0.80 if tier == 4 else 1.32
-	var hits := 0
 	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
 		if not enemy_node is Node2D:
 			continue
@@ -678,14 +715,11 @@ func _resolve_flashstep_arrival() -> void:
 			continue
 		var direction := (target.global_position - global_position).normalized()
 		if DamageResolver.apply_with_result(target, packet, direction) > 0.0:
-			hits += 1
 			lightning_arc_requested.emit(global_position, target.global_position, 0.72)
 	thunder_burst_requested.emit(global_position, radius, 0.68 if tier == 4 else 1.0, false)
-	if tier >= 5:
-		gain_blessing(mini(3, hits))
 
 
-func _apply_traversal_hits(packet: DamagePacket, reward_blessing: bool) -> void:
+func _apply_traversal_hits(packet: DamagePacket) -> void:
 	for hurtbox: Area2D in _attack_area.get_overlapping_areas():
 		var target := hurtbox.get_parent() as Node2D
 		if not is_instance_valid(target) or not target.is_in_group(&"enemies"):
@@ -698,99 +732,53 @@ func _apply_traversal_hits(packet: DamagePacket, reward_blessing: bool) -> void:
 		var dealt := DamageResolver.apply_with_result(target, packet, direction)
 		if dealt <= 0.0:
 			continue
-		if reward_blessing:
-			gain_blessing(1)
 		combat_impact.emit(target.global_position, direction, packet, clampf(packet.health_damage / 62.0, 0.24, 0.92))
 		lightning_arc_requested.emit(global_position - direction * 36.0, target.global_position, 0.62)
-		if packet.survivor_ability_slot == &"signature" and get_survivor_ability_tier(&"signature") >= 4:
-			_fork_thunder_dash(target, packet)
 
 
-func _fork_thunder_dash(primary_target: Node2D, packet: DamagePacket) -> void:
-	var tier := get_survivor_ability_tier(&"signature")
-	var candidates: Array[Node2D] = []
-	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
-		if not enemy_node is Node2D or enemy_node == primary_target:
-			continue
-		var candidate := enemy_node as Node2D
-		if _target_is_alive(candidate) and primary_target.global_position.distance_to(candidate.global_position) <= (250.0 if tier == 4 else 330.0):
-			candidates.append(candidate)
-	candidates.sort_custom(func(left: Node2D, right: Node2D) -> bool:
-		return primary_target.global_position.distance_squared_to(left.global_position) < primary_target.global_position.distance_squared_to(right.global_position)
-	)
-	var previous := primary_target
-	for index: int in mini(1 if tier == 4 else 3, candidates.size()):
-		var target := candidates[index]
-		var target_id := target.get_instance_id()
-		if _hit_target_ids.has(target_id):
-			continue
-		_hit_target_ids[target_id] = true
-		var chain_direction := (target.global_position - previous.global_position).normalized()
-		var chain_packet := DamagePacket.sniff_dash(self, _dash_charge, _dash_spent)
-		chain_packet.health_damage *= 0.58 - float(index) * 0.09
-		chain_packet.resolve_damage *= 0.72 - float(index) * 0.08
-		if DamageResolver.apply_with_result(target, chain_packet, chain_direction) > 0.0:
-			gain_blessing(1)
-			lightning_arc_requested.emit(previous.global_position, target.global_position, 0.92 - float(index) * 0.12)
-			combat_impact.emit(target.global_position, chain_direction, chain_packet, 0.56)
-		previous = target
-
-
-func _begin_divine_annihilation() -> void:
-	if not _spend_mana(ANNIHILATION_MANA_COST):
+func _begin_worldstorm() -> void:
+	if not _spend_mana(WORLDSTORM_MANA_COST):
 		return
 	var tier := get_survivor_ability_tier(&"ultimate")
-	_ultimate_snapshot = blessing
-	_ultimate_crowned = blessing >= MAX_BLESSING
-	spend_blessing(blessing)
-	_apply_self_cost(get_max_health() * 0.15)
-	ultimate_cooldown = 20.0
-	_state_time = [0.44, 0.56, 0.68, 0.76, 0.84][tier - 1] as float
-	if _ultimate_crowned:
-		_invulnerable_time = maxf(_invulnerable_time, 1.72)
-	audio_requested.emit(&"sniff_ultimate_charge", float(_ultimate_snapshot) / float(MAX_BLESSING))
-	announcement_requested.emit("DIVINE ANNIHILATION")
-	_set_state(State.ULTIMATE_STARTUP)
+	var radii := [600.0, 800.0, WORLDSTORM_BASE_RADIUS, 1500.0, 2400.0]
+	_spell_center = global_position
+	_spell_radius = radii[tier - 1] as float
+	_spell_load_snapshot = blessing
+	ultimate_cooldown = 28.0
+	_state_time = [0.80, 0.95, 1.10, 1.25, 1.40][tier - 1] as float
+	audio_requested.emit(&"sniff_ultimate_charge", 1.0)
+	announcement_requested.emit("WORLDSTORM")
+	_set_state(State.WORLDSTORM_STARTUP)
 	stats_changed.emit()
 
 
-func _resolve_divine_annihilation() -> void:
+func _resolve_worldstorm() -> void:
 	var tier := get_survivor_ability_tier(&"ultimate")
-	var packet := DamagePacket.sniff_annihilation(self, _ultimate_snapshot)
-	var radii := [280.0, 410.0, ULTIMATE_RADIUS, 780.0, 2200.0]
-	var target_limits := [3, 6, 999, 999, 999]
-	var ultimate_radius := radii[tier - 1] as float
-	var targets: Array[Node2D] = []
-	for enemy_node: Node in get_tree().get_nodes_in_group(&"enemies"):
-		if enemy_node is Node2D and _target_is_alive(enemy_node as Node2D):
-			var target := enemy_node as Node2D
-			if global_position.distance_to(target.global_position) <= ultimate_radius:
-				targets.append(target)
-	targets.sort_custom(func(left: Node2D, right: Node2D) -> bool:
-		return global_position.distance_squared_to(left.global_position) < global_position.distance_squared_to(right.global_position)
-	)
-	var arc_origin := global_position
-	var struck := 0
-	for target: Node2D in targets.slice(0, mini(target_limits[tier - 1] as int, targets.size())):
-		var direction := (target.global_position - global_position).normalized()
-		var dealt := DamageResolver.apply_with_result(target, packet, direction)
-		if dealt > 0.0:
-			struck += 1
-			if tier >= 4:
-				var aftershock := DamagePacket.sniff_annihilation(self, _ultimate_snapshot)
-				aftershock.health_damage *= 0.38 if tier == 4 else 0.72
-				aftershock.resolve_damage *= 0.55 if tier == 4 else 0.86
-				DamageResolver.apply(target, aftershock, direction)
-			lightning_arc_requested.emit(arc_origin, target.global_position, 1.0)
-			combat_impact.emit(target.global_position, direction, packet, 1.0)
-			arc_origin = target.global_position
-	thunder_burst_requested.emit(global_position, ultimate_radius, 1.0, true)
-	if tier >= 5:
-		gain_blessing(mini(MAX_BLESSING, struck))
-		_overcharge_time = maxf(_overcharge_time, 8.0)
+	var target_limits := [6, 10, 999, 999, 999]
+	var targets := _collect_spell_targets(global_position, _spell_radius, target_limits[tier - 1] as int)
+	var arc_origin := global_position + Vector2(0.0, -780.0)
+	lightning_arc_requested.emit(arc_origin, global_position, 1.0)
+	var hit_count := 0
+	for target: Node2D in targets:
+		var direction := (target.global_position - arc_origin).normalized()
+		var packet := DamagePacket.sniff_worldstorm(self, _spell_load_snapshot)
+		if DamageResolver.apply_with_result(target, packet, direction) <= 0.0:
+			continue
+		hit_count += 1
+		lightning_arc_requested.emit(arc_origin, target.global_position, 1.0)
+		combat_impact.emit(target.global_position, direction, packet, 1.0)
+		if tier >= 4:
+			var aftershock := DamagePacket.sniff_worldstorm(self, _spell_load_snapshot)
+			aftershock.health_damage *= 0.42 if tier == 4 else 0.72
+			aftershock.resolve_damage *= 0.56 if tier == 4 else 0.86
+			DamageResolver.apply(target, aftershock, direction)
+		arc_origin = target.global_position
+	thunder_burst_requested.emit(global_position, _spell_radius, 1.0, true)
+	_reward_voltaic_load(&"ultimate", hit_count)
+	_resolve_spell_backfire(0.14, 18.0, _spell_load_snapshot)
 	audio_requested.emit(&"sniff_ultimate", 1.0)
-	_state_time = 0.72
-	_set_state(State.ULTIMATE_RECOVERY)
+	_state_time = 0.82
+	_set_state(State.WORLDSTORM_RECOVERY)
 	stats_changed.emit()
 
 
@@ -806,7 +794,7 @@ func receive_hit(packet: DamagePacket, incoming_direction: Vector2) -> float:
 	resolve = maxf(0.0, resolve - packet.resolve_damage)
 	_knockback_velocity += incoming_direction.normalized() * packet.knockback_force
 	audio_requested.emit(&"sniff_hurt", clampf(packet.health_damage / 36.0, 0.2, 1.0))
-	if resolve <= 0.0 and _state != State.ULTIMATE_STARTUP:
+	if resolve <= 0.0 and _state != State.WORLDSTORM_STARTUP:
 		resolve = get_max_resolve() * 0.42
 		_attack_area.monitoring = false
 		_state_time = 0.48
@@ -824,6 +812,24 @@ func _apply_self_cost(amount: float) -> float:
 		return 0.0
 	var before := health
 	health = maxf(1.0, health - amount)
+	stats_changed.emit()
+	return before - health
+
+
+func _apply_storm_feedback(amount: float, backfire: bool) -> float:
+	if amount <= 0.0 or _state == State.DEAD:
+		return 0.0
+	var before := health
+	health = maxf(0.0, health - amount)
+	lightning_arc_requested.emit(global_position + Vector2(-30.0, -44.0), global_position, 0.78 if backfire else 0.46)
+	thunder_burst_requested.emit(global_position, 76.0 if backfire else 48.0, 0.52 if backfire else 0.28, false)
+	audio_requested.emit(&"sniff_hurt", clampf(amount / 28.0, 0.22, 0.86))
+	if backfire:
+		announcement_requested.emit("STORM FEEDBACK")
+	if health <= 0.0:
+		_state = State.DEAD
+		velocity = Vector2.ZERO
+		defeated.emit()
 	stats_changed.emit()
 	return before - health
 
@@ -851,14 +857,22 @@ func _spend_mana(cost: float) -> bool:
 
 
 func gain_blessing(amount: int) -> void:
-	if amount <= 0 or _state == State.DEAD:
+	if amount <= 0 or _state == State.DEAD or not is_voltaic_load_unlocked():
 		return
 	var before := blessing
-	blessing = clampi(blessing + amount, 0, MAX_BLESSING)
-	if blessing == MAX_BLESSING and before < MAX_BLESSING:
+	blessing = clampi(blessing + amount, 0, MAX_VOLTAIC_LOAD)
+	if blessing == MAX_VOLTAIC_LOAD and before < MAX_VOLTAIC_LOAD:
 		audio_requested.emit(&"sniff_crowned", 1.0)
-		announcement_requested.emit("THUNDER CROWNED")
+		announcement_requested.emit("STORM CRITICAL")
 	stats_changed.emit()
+
+
+func _reward_voltaic_load(ability_slot: StringName, successful_hits: int) -> bool:
+	if successful_hits <= 0 or ability_slot in [&"primary", &"evade"] or not is_voltaic_load_unlocked():
+		return false
+	var before := blessing
+	gain_blessing(1)
+	return blessing > before
 
 
 func spend_blessing(amount: int) -> void:
@@ -911,32 +925,34 @@ func get_blessing_count() -> int:
 	return blessing
 
 
-func get_dash_charge_ratio() -> float:
-	return _dash_charge if _state == State.DASH_CHARGE else 0.0
+func get_voltaic_load() -> int:
+	return blessing
 
 
-func is_dash_charging() -> bool:
-	return _state == State.DASH_CHARGE
+func get_active_spell_radius() -> float:
+	return _spell_radius
+
+
+func did_last_spell_backfire() -> bool:
+	return _last_spell_backfired
 
 
 func get_state_label() -> String:
 	match _state:
 		State.DART_STARTUP, State.DART_RECOVERY:
 			return "Dart"
-		State.DASH_CHARGE:
-			return "Charging"
-		State.DASH_ACTIVE, State.DASH_RECOVERY:
-			return "Thunder Dash"
-		State.BLESSING_RECOVERY:
-			return "Overcharged"
-		State.SURGE_STARTUP, State.SURGE_RECOVERY:
-			return "Surge"
+		State.HEAVENFALL_STARTUP, State.HEAVENFALL_RECOVERY:
+			return "Heavenfall"
+		State.TEMPEST_STARTUP, State.TEMPEST_RECOVERY:
+			return "Covenant"
+		State.DISCHARGE_STARTUP, State.DISCHARGE_RECOVERY:
+			return "Discharging"
 		State.FLASHSTEP:
 			return "Flashstep"
-		State.ULTIMATE_STARTUP:
-			return "Annihilating"
-		State.ULTIMATE_RECOVERY:
-			return "Afterglow"
+		State.WORLDSTORM_STARTUP:
+			return "Worldstorm"
+		State.WORLDSTORM_RECOVERY:
+			return "Stormwake"
 		_:
 			return State.keys()[_state].capitalize()
 
@@ -976,17 +992,18 @@ func _draw() -> void:
 		draw_circle(orbit, 4.0, Color("52dcff"))
 		draw_circle(orbit, 1.8, Color("fff29a"))
 
-	if _state == State.DASH_CHARGE:
-		var distance := lerpf(DASH_MIN_DISTANCE, DASH_MAX_DISTANCE, CombatMath.shaped_charge(_dash_charge))
-		draw_line(Vector2.ZERO, facing * distance, Color(0.25, 0.86, 1.0, 0.24), 16.0, true)
-		draw_line(Vector2.ZERO, facing * distance, Color(1.0, 0.91, 0.35, 0.84), 3.0, true)
-	if _state == State.SURGE_STARTUP:
-		draw_circle(Vector2.ZERO, _surge_radius, Color(0.10, 0.72, 0.96, 0.09))
-		draw_arc(Vector2.ZERO, _surge_radius, 0.0, TAU, 72, Color(0.94, 0.86, 0.25, 0.76), 3.0, true)
-	if _state == State.ULTIMATE_STARTUP:
+	if _state in [State.HEAVENFALL_STARTUP, State.TEMPEST_STARTUP]:
+		var local_center := _spell_center - global_position
+		draw_circle(local_center, _spell_radius, Color(0.10, 0.72, 0.96, 0.055))
+		draw_arc(local_center, _spell_radius, _visual_time * 0.8, _visual_time * 0.8 + PI * 1.72, 96, Color(0.94, 0.86, 0.25, 0.72), 4.0, true)
+		draw_line(local_center + Vector2(0.0, -minf(720.0, _spell_radius * 1.4)), local_center, Color(0.55, 0.90, 1.0, 0.38), 8.0, true)
+	if _state == State.DISCHARGE_STARTUP:
+		draw_circle(Vector2.ZERO, _spell_radius, Color(0.10, 0.72, 0.96, 0.07))
+		draw_arc(Vector2.ZERO, _spell_radius, -_visual_time, TAU - _visual_time, 112, Color(0.94, 0.86, 0.25, 0.82), 5.0, true)
+	if _state == State.WORLDSTORM_STARTUP:
 		var pulse := 0.72 + sin(_visual_time * 22.0) * 0.18
-		draw_circle(Vector2.ZERO, ULTIMATE_RADIUS, Color(0.18, 0.75, 1.0, 0.035 * pulse))
-		draw_arc(Vector2.ZERO, ULTIMATE_RADIUS, 0.0, TAU, 120, Color(0.95, 0.84, 0.22, 0.48 * pulse), 5.0, true)
+		draw_circle(Vector2.ZERO, _spell_radius, Color(0.18, 0.75, 1.0, 0.035 * pulse))
+		draw_arc(Vector2.ZERO, _spell_radius, 0.0, TAU, 160, Color(0.95, 0.84, 0.22, 0.58 * pulse), 7.0, true)
 	if _invulnerable_time > 0.0:
 		draw_arc(Vector2.ZERO, 35.0, _visual_time * 5.0, _visual_time * 5.0 + PI * 1.55, 30, Color(0.78, 0.96, 1.0, 0.88), 4.0, true)
 	_draw_debug_attack()

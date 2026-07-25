@@ -23,6 +23,8 @@ func _capture() -> void:
 	for index: int in mini(enemies.size(), enemy_positions.size()):
 		var enemy := enemies[index] as ReliquaryPursuer
 		enemy.global_position = enemy_positions[index]
+		enemy.max_health = 5000.0
+		enemy.health = enemy.max_health
 		enemy.process_mode = Node.PROCESS_MODE_DISABLED
 
 	player.set_survivor_mode(true)
@@ -39,52 +41,83 @@ func _capture() -> void:
 		return
 	player.set_survivor_mode(false)
 
-	player.blessing = 6
-	player.call("_cast_roaring_blessing")
-	for _frame: int in 5:
-		await physics_frame
+	player.blessing = SniffPlayer.OVERLOAD_THRESHOLD
+	for _frame: int in 2:
 		await process_frame
-	if not _save_capture("sniff_crowned.png"):
+	if not _save_capture("sniff_overload.png"):
 		quit(1)
 		return
 
-	Input.action_press(&"signature")
-	player.call("_begin_thunder_dash")
-	player.set("_dash_charge", 0.82)
-	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("THUNDER DASH")
+	player.set("_state", SniffPlayer.State.FREE)
+	player.mana = SniffPlayer.MAX_MANA
+	player.heavenfall_cooldown = 0.0
+	player.aim_direction = Vector2.RIGHT
+	player.set("_backfire_override", 0)
+	player.call("_begin_heavenfall")
+	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("HEAVENFALL")
 	for _frame: int in 3:
 		await physics_frame
 		await process_frame
-	if not _save_capture("sniff_dash_charge.png"):
+	player.call("_resolve_heavenfall")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("sniff_heavenfall.png"):
 		quit(1)
 		return
-	Input.action_release(&"signature")
-	for _frame: int in 24:
+
+	player.set("_state", SniffPlayer.State.FREE)
+	player.mana = SniffPlayer.MAX_MANA
+	player.blessing_cooldown = 0.0
+	player.aim_direction = Vector2.RIGHT
+	player.set("_backfire_override", 0)
+	player.call("_begin_tempest_covenant")
+	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("TEMPEST COVENANT")
+	for _frame: int in 3:
 		await physics_frame
 		await process_frame
+	player.call("_resolve_tempest_covenant")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("sniff_tempest.png"):
+		quit(1)
+		return
 
+	player.set("_state", SniffPlayer.State.FREE)
 	player.global_position = Vector2(455.0, 360.0)
-	player.blessing = SniffPlayer.MAX_BLESSING
-	player.call("_begin_explosive_surge")
-	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("EXPLOSIVE SURGE")
-	for _frame: int in 19:
+	player.mana = SniffPlayer.MAX_MANA
+	player.surge_cooldown = 0.0
+	player.blessing = SniffPlayer.MAX_VOLTAIC_LOAD
+	player.set("_backfire_override", 0)
+	player.call("_begin_cataclysm_discharge")
+	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("CATACLYSM DISCHARGE")
+	for _frame: int in 3:
 		await physics_frame
 		await process_frame
-	if not _save_capture("sniff_surge.png"):
+	player.call("_resolve_cataclysm_discharge")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("sniff_discharge.png"):
 		quit(1)
 		return
 
+	player.set("_state", SniffPlayer.State.FREE)
 	player.global_position = Vector2(455.0, 360.0)
-	player.blessing = SniffPlayer.MAX_BLESSING
-	player.call("_begin_divine_annihilation")
-	for _frame: int in 45:
+	player.mana = SniffPlayer.MAX_MANA
+	player.ultimate_cooldown = 0.0
+	player.blessing = 6
+	player.set("_backfire_override", 0)
+	player.call("_begin_worldstorm")
+	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("WORLDSTORM")
+	for _frame: int in 3:
 		await physics_frame
 		await process_frame
-	if not _save_capture("sniff_annihilation.png"):
+	player.call("_resolve_worldstorm")
+	for _frame: int in 2:
+		await process_frame
+	if not _save_capture("sniff_worldstorm.png"):
 		quit(1)
 		return
 
-	Input.action_release(&"signature")
 	scene.queue_free()
 	for _frame: int in 8:
 		await process_frame

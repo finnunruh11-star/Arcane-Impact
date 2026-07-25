@@ -25,6 +25,10 @@ const MAX_ENEMIES := 18
 const KILL_RATE_WINDOW := 30.0
 const KILL_RATE_GRACE := 10.0
 const BASE_PICKUP_RADIUS := 120.0
+const SPAWN_EDGE_INSET := 64.0
+const SPAWN_CLEARANCE := 54.0
+const SPAWN_PLAYER_DISTANCE := 460.0
+const SPAWN_ENEMY_DISTANCE := 108.0
 
 @export_range(0, 3, 1) var hero_index := 0
 @export var audio_enabled := true
@@ -41,6 +45,7 @@ var _progression
 var _spawn_director: SurvivorSpawnDirector = SpawnDirectorScript.new()
 var _enemies: Array[ReliquaryPursuer] = []
 var _rng := RandomNumberGenerator.new()
+var _spawn_side_bag: Array[int] = []
 var _run_time := 0.0
 var _spawn_timer := 0.0
 var _recovery_timer := 0.0
@@ -292,22 +297,56 @@ func _spawn_enemy() -> bool:
 
 
 func _random_edge_position() -> Vector2:
-	var bounds := ArenaBackdrop.PLAYABLE_RECT.grow(-42.0)
-	for _attempt: int in 12:
-		var side := _rng.randi_range(0, 3)
-		var candidate: Vector2
-		match side:
-			0:
-				candidate = Vector2(_rng.randf_range(bounds.position.x, bounds.end.x), bounds.position.y)
-			1:
-				candidate = Vector2(bounds.end.x, _rng.randf_range(bounds.position.y, bounds.end.y))
-			2:
-				candidate = Vector2(_rng.randf_range(bounds.position.x, bounds.end.x), bounds.end.y)
-			_:
-				candidate = Vector2(bounds.position.x, _rng.randf_range(bounds.position.y, bounds.end.y))
-		if ArenaBackdrop.is_position_clear(candidate, 54.0):
-			return candidate
-	return bounds.position
+	var bounds := ArenaBackdrop.PLAYABLE_RECT.grow(-SPAWN_EDGE_INSET)
+	for _side_attempt: int in 4:
+		var side := _take_spawn_side()
+		for _slot_attempt: int in 6:
+			var candidate := _position_on_spawn_side(side, bounds, _rng.randf())
+			if _is_spawn_candidate_clear(candidate):
+				return candidate
+	var fallback_fractions := [0.14, 0.32, 0.50, 0.68, 0.86]
+	for side: int in 4:
+		for fraction: float in fallback_fractions:
+			var candidate := _position_on_spawn_side(side, bounds, fraction)
+			if _is_spawn_candidate_clear(candidate):
+				return candidate
+	return Vector2(bounds.get_center().x, bounds.position.y)
+
+
+func _take_spawn_side() -> int:
+	if _spawn_side_bag.is_empty():
+		for side: int in 4:
+			_spawn_side_bag.append(side)
+		for side_index: int in range(_spawn_side_bag.size() - 1, 0, -1):
+			var swap_index := _rng.randi_range(0, side_index)
+			var held_side := _spawn_side_bag[side_index]
+			_spawn_side_bag[side_index] = _spawn_side_bag[swap_index]
+			_spawn_side_bag[swap_index] = held_side
+	return _spawn_side_bag.pop_back()
+
+
+func _position_on_spawn_side(side: int, bounds: Rect2, fraction: float) -> Vector2:
+	var edge_fraction := clampf(fraction, 0.0, 1.0)
+	match side:
+		0:
+			return Vector2(lerpf(bounds.position.x, bounds.end.x, edge_fraction), bounds.position.y)
+		1:
+			return Vector2(bounds.end.x, lerpf(bounds.position.y, bounds.end.y, edge_fraction))
+		2:
+			return Vector2(lerpf(bounds.position.x, bounds.end.x, edge_fraction), bounds.end.y)
+		_:
+			return Vector2(bounds.position.x, lerpf(bounds.position.y, bounds.end.y, edge_fraction))
+
+
+func _is_spawn_candidate_clear(candidate: Vector2) -> bool:
+	if not ArenaBackdrop.is_position_clear(candidate, SPAWN_CLEARANCE):
+		return false
+	if is_instance_valid(_player) and candidate.distance_to(_player.global_position) < SPAWN_PLAYER_DISTANCE:
+		return false
+	for enemy: ReliquaryPursuer in _enemies:
+		if is_instance_valid(enemy) and enemy.is_alive() and candidate.distance_to(enemy.global_position) < SPAWN_ENEMY_DISTANCE:
+			return false
+	return true
 
 
 func _tick_recovery(delta: float) -> void:

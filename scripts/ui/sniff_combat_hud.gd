@@ -12,7 +12,8 @@ var _mana_value: Label
 var _state_label: Label
 var _encounter_label: Label
 var _announcement: Label
-var _blessing_pips: Array[Panel] = []
+var _load_label: Label
+var _load_pips: Array[Panel] = []
 var _announcement_timer := 0.0
 var _health_flash := 0.0
 var _last_health := SniffPlayer.MAX_HEALTH
@@ -38,11 +39,11 @@ func _ready() -> void:
 	var identity_panel := _make_panel(Vector2(24.0, 22.0), Vector2(390.0, 208.0), Color(0.018, 0.038, 0.052, 0.95), Color("297f91"))
 	root.add_child(identity_panel)
 	identity_panel.add_child(_make_label("SNIFF", Vector2(18.0, 10.0), Vector2(92.0, 38.0), 28, Color("fff0a5")))
-	identity_panel.add_child(_make_label("VOLTAIC GAMBLER", Vector2(110.0, 17.0), Vector2(190.0, 24.0), 13, Color("5edbf4")))
+	identity_panel.add_child(_make_label("STORM CATASTROPHIST", Vector2(110.0, 17.0), Vector2(190.0, 24.0), 12, Color("5edbf4")))
 	_state_label = _make_label("Free", Vector2(286.0, 17.0), Vector2(84.0, 24.0), 12, Color("f2d85c"), HORIZONTAL_ALIGNMENT_RIGHT)
 	identity_panel.add_child(_state_label)
 
-	identity_panel.add_child(_make_label("HEALTH / BLOOD PRICE", Vector2(18.0, 47.0), Vector2(164.0, 18.0), 9, Color("a9c4c9")))
+	identity_panel.add_child(_make_label("HEALTH / FEEDBACK RISK", Vector2(18.0, 47.0), Vector2(180.0, 18.0), 9, Color("a9c4c9")))
 	_health_bar = _make_bar(Vector2(18.0, 67.0), Vector2(252.0, 11.0), Color("e55462"))
 	identity_panel.add_child(_health_bar)
 	_health_value = _make_label("245", Vector2(280.0, 47.0), Vector2(90.0, 24.0), 14, Color("f3ece0"), HORIZONTAL_ALIGNMENT_RIGHT)
@@ -56,11 +57,12 @@ func _ready() -> void:
 	identity_panel.add_child(_mana_bar)
 	_mana_value = _make_label("130 / 130", Vector2(280.0, 116.0), Vector2(90.0, 22.0), 11, Color("c8d8fa"), HORIZONTAL_ALIGNMENT_RIGHT)
 	identity_panel.add_child(_mana_value)
-	identity_panel.add_child(_make_label("BLESSING OF ROARING THUNDER", Vector2(18.0, 151.0), Vector2(224.0, 18.0), 10, Color("d8c96b")))
-	for stack_index: int in SniffPlayer.MAX_BLESSING:
+	_load_label = _make_label("VOLTAIC LOAD / STABLE", Vector2(18.0, 151.0), Vector2(280.0, 18.0), 10, Color("d8c96b"))
+	identity_panel.add_child(_load_label)
+	for stack_index: int in SniffPlayer.MAX_VOLTAIC_LOAD:
 		var pip := _make_panel(Vector2(18.0 + float(stack_index) * 35.0, 177.0), Vector2(29.0, 13.0), Color("101e26"), Color("29515b"))
 		identity_panel.add_child(pip)
-		_blessing_pips.append(pip)
+		_load_pips.append(pip)
 
 	var encounter_panel := _make_panel(Vector2(500.0, 22.0), Vector2(280.0, 50.0), Color(0.018, 0.038, 0.052, 0.92), Color("297f91"))
 	root.add_child(encounter_panel)
@@ -75,13 +77,13 @@ func _ready() -> void:
 
 	var slots := [
 		[&"primary", "LIGHTNING DART", "LMB", "RT"],
-		[&"dash", "THUNDER DASH", "RMB", "LT"],
-		[&"blessing", "ROARING BLESSING", "Q", "RB"],
-		[&"surge", "EXPLOSIVE SURGE", "E", "LB"],
+		[&"heavenfall", "HEAVENFALL", "RMB", "LT"],
+		[&"tempest", "TEMPEST COVENANT", "Q", "RB"],
+		[&"discharge", "CATACLYSM DISCHARGE", "E", "LB"],
 		[&"step", "FLASHSTEP", "SPACE", "A"],
-		[&"ultimate", "DIVINE ANNIHILATION", "R", "Y"],
+		[&"ultimate", "WORLDSTORM", "R", "Y"],
 	]
-	var slot_width := 178.0
+	var slot_width := 190.0
 	var total_width := slot_width * float(slots.size()) + 8.0 * float(slots.size() - 1)
 	var start_x := (1280.0 - total_width) * 0.5
 	for index: int in slots.size():
@@ -113,27 +115,24 @@ func _process(delta: float) -> void:
 	_health_value.text = "%d / %d" % [int(ceil(_player.health)), int(ceil(_player.get_max_health()))]
 	_mana_value.text = "%d / %d" % [int(floor(_player.mana)), int(ceil(_player.get_max_mana()))]
 	_state_label.text = _player.get_state_label()
-	for stack_index: int in _blessing_pips.size():
+	var overloaded := _player.blessing >= SniffPlayer.OVERLOAD_THRESHOLD
+	_load_label.text = "VOLTAIC LOAD / OVERLOAD" if overloaded else "VOLTAIC LOAD / STABLE"
+	_load_label.add_theme_color_override(&"font_color", Color("ff785f") if overloaded else Color("d8c96b"))
+	for stack_index: int in _load_pips.size():
 		var active := stack_index < _player.blessing
-		var style := _blessing_pips[stack_index].get_theme_stylebox(&"panel") as StyleBoxFlat
-		style.bg_color = Color("f1d649") if active else Color("101e26")
-		style.border_color = Color("bfffff") if active else Color("29515b")
+		var style := _load_pips[stack_index].get_theme_stylebox(&"panel") as StyleBoxFlat
+		style.bg_color = (Color("ff5e4c") if overloaded else Color("f1d649")) if active else Color("101e26")
+		style.border_color = (Color("fff0a5") if overloaded else Color("bfffff")) if active else Color("29515b")
 
-	_update_slot(&"primary", 0.0, 1.0, "6 MANA")
-	_update_slot(&"dash", 0.0, 1.0, "24M / 0-3 BLESS")
-	_update_slot(&"blessing", _player.blessing_cooldown, 8.0, "30M + HP")
-	_update_slot(&"surge", _player.surge_cooldown, 7.5, "38M + HP")
-	_update_slot(&"step", _player.flashstep_cooldown, SniffPlayer.FLASHSTEP_COOLDOWN, "16 MANA")
-	_update_slot(&"ultimate", _player.ultimate_cooldown, 20.0, "70M + HP")
-	if _player.is_dash_charging():
-		var data: Dictionary = _slot_data[&"dash"]
-		var progress := data[&"progress"] as ProgressBar
-		var status := data[&"status"] as Label
-		progress.value = _player.get_dash_charge_ratio() * 100.0
-		status.text = "%d%%" % int(round(_player.get_dash_charge_ratio() * 100.0))
-	_apply_progression_status(&"dash", &"signature")
-	_apply_progression_status(&"blessing", &"ability_1")
-	_apply_progression_status(&"surge", &"ability_2")
+	_update_slot(&"primary", 0.0, 1.0, "%d MANA" % int(SniffPlayer.DART_MANA_COST))
+	_update_slot(&"heavenfall", _player.heavenfall_cooldown, 8.0, "%d MANA" % int(SniffPlayer.HEAVENFALL_MANA_COST))
+	_update_slot(&"tempest", _player.blessing_cooldown, 12.0, "%d MANA" % int(SniffPlayer.TEMPEST_MANA_COST))
+	_update_slot(&"discharge", _player.surge_cooldown, 14.0, "%dM + LOAD" % int(SniffPlayer.DISCHARGE_MANA_COST))
+	_update_slot(&"step", _player.flashstep_cooldown, SniffPlayer.FLASHSTEP_COOLDOWN, "%d MANA" % int(SniffPlayer.FLASHSTEP_MANA_COST))
+	_update_slot(&"ultimate", _player.ultimate_cooldown, 28.0, "%d MANA" % int(SniffPlayer.WORLDSTORM_MANA_COST))
+	_apply_progression_status(&"heavenfall", &"signature")
+	_apply_progression_status(&"tempest", &"ability_1")
+	_apply_progression_status(&"discharge", &"ability_2")
 	_apply_progression_status(&"step", &"evade")
 	_apply_progression_status(&"ultimate", &"ultimate")
 
@@ -211,7 +210,7 @@ func _make_ability_slot(
 	var panel := _make_panel(at, panel_size, Color(0.018, 0.036, 0.048, 0.96), border)
 	var glyph := _make_label(keyboard_glyph, Vector2(10.0, 8.0), Vector2(42.0, 25.0), 13, Color("ffeba0"), HORIZONTAL_ALIGNMENT_CENTER)
 	panel.add_child(glyph)
-	panel.add_child(_make_label(ability_name, Vector2(52.0, 7.0), Vector2(panel_size.x - 60.0, 28.0), 11, Color("dff3f1")))
+	panel.add_child(_make_label(ability_name, Vector2(52.0, 7.0), Vector2(panel_size.x - 60.0, 28.0), 10 if ability_name.length() > 17 else 11, Color("dff3f1")))
 	var status := _make_label("READY", Vector2(10.0, 38.0), Vector2(panel_size.x - 20.0, 20.0), 10, Color("f7df68"), HORIZONTAL_ALIGNMENT_RIGHT)
 	panel.add_child(status)
 	var progress := _make_bar(Vector2(10.0, 61.0), Vector2(panel_size.x - 20.0, 5.0), Color("3bcce2") if not is_ultimate else Color("f0c23b"))

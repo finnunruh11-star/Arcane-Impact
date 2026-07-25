@@ -306,6 +306,8 @@ func _run() -> void:
 		sniff_enemy.configure(sniff, 1)
 		sniff_enemy.position = Vector2(550.0 + float(enemy_index) * 120.0, 360.0)
 		sniff_enemy.move_speed = 0.0
+		sniff_enemy.max_health = 1200.0
+		sniff_enemy.health = sniff_enemy.max_health
 		sniff_world.add_child(sniff_enemy)
 		sniff_enemies.append(sniff_enemy)
 	await process_frame
@@ -318,7 +320,15 @@ func _run() -> void:
 	_expect(sniff_enemies[0].health < primary_health_before, "Lightning Dart damages its primary target")
 	_expect(sniff_enemies[1].health < chain_health_before, "Lightning Dart chains to a nearby second target")
 	_expect(sniff_enemies[2].health < second_chain_health_before, "tier-three Lightning Dart evolves into a second damaging chain")
-	_expect(sniff.get_blessing_count() == 3, "dart and both evolved chain hits each build Blessing")
+	_expect(sniff.get_voltaic_load() == 0, "Lightning Dart chains without generating Voltaic Load")
+	var base_sniff_speed := sniff.get_move_speed()
+	sniff.gain_blessing(6)
+	_expect(sniff.get_move_speed() > base_sniff_speed and sniff.get_voltaic_power_multiplier() > 1.30, "Voltaic Load increases Sniff's movement speed and spell power")
+	var overload_health_before: float = sniff.health
+	sniff.blessing = SniffPlayerScript.OVERLOAD_THRESHOLD
+	sniff.call("_tick_voltaic_overload", SniffPlayerScript.OVERLOAD_TICK_INTERVAL)
+	_expect(sniff.health < overload_health_before, "seven Voltaic Load stacks begin damaging Sniff over time")
+	sniff.blessing = 0
 
 	sniff.aim_direction = Vector2.RIGHT
 	var dart_mana_before: float = sniff.mana
@@ -335,65 +345,91 @@ func _run() -> void:
 		await physics_frame
 		await process_frame
 
-	var wager_health_before: float = sniff.health
-	var wager_blessing_before: int = sniff.blessing
-	sniff.call("_cast_roaring_blessing")
-	_expect(sniff.health < wager_health_before, "Roaring Blessing visibly wagers health")
-	_expect(sniff.blessing == mini(SniffPlayerScript.MAX_BLESSING, wager_blessing_before + 4), "Roaring Blessing grants four stacks")
-
-	sniff.blessing = 5
-	var surge_health_before: float = sniff.health
-	var surge_target_before: float = sniff_enemies[0].health
-	sniff.call("_begin_explosive_surge")
-	for _frame: int in 3:
-		await physics_frame
-		await process_frame
-	sniff.call("_resolve_explosive_surge")
-	_expect(sniff.blessing == 0, "Explosive Surge cashes out all Blessing")
-	_expect(sniff.health < surge_health_before, "Explosive Surge pays its health cost")
-	_expect(sniff_enemies[0].health < surge_target_before, "Explosive Surge uses its collision radius to damage nearby enemies")
-
-	sniff.global_position = Vector2(430.0, 500.0)
-	sniff_enemies[2].global_position = Vector2(625.0, 500.0)
-	sniff.blessing = 3
+	_expect(
+		SniffPlayerScript.HEAVENFALL_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5
+		and SniffPlayerScript.TEMPEST_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5
+		and SniffPlayerScript.DISCHARGE_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5
+		and SniffPlayerScript.WORLDSTORM_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5,
+		"every offensive Sniff spell costs more than half his base Mana"
+	)
+	for tempest_reset_target: ReliquaryPursuer in sniff_enemies:
+		tempest_reset_target.health = tempest_reset_target.max_health
+		tempest_reset_target.global_position = Vector2(550.0 + float(sniff_enemies.find(tempest_reset_target)) * 120.0, 360.0)
+	sniff.set("_state", SniffPlayerScript.State.FREE)
+	sniff.mana = SniffPlayerScript.MAX_MANA
+	sniff.blessing = 0
+	sniff.set("_backfire_override", 0)
 	sniff.aim_direction = Vector2.RIGHT
-	var dash_target_before: float = sniff_enemies[2].health
-	var dash_start_x: float = sniff.global_position.x
-	sniff.call("_begin_thunder_dash")
-	sniff.set("_dash_charge", 1.0)
-	sniff.call("_release_thunder_dash")
-	for _frame: int in 22:
-		await physics_frame
-		await process_frame
-	_expect(sniff.global_position.x > dash_start_x + 300.0, "charged Thunder Dash traverses its authored distance")
-	_expect(sniff_enemies[2].health < dash_target_before, "Thunder Dash damages an enemy crossed once")
+	var tempest_mana_before: float = sniff.mana
+	var tempest_target_before: float = sniff_enemies[1].health
+	sniff.call("_begin_tempest_covenant")
+	sniff.call("_resolve_tempest_covenant")
+	_expect(is_equal_approx(sniff.mana, tempest_mana_before - SniffPlayerScript.TEMPEST_MANA_COST), "Tempest Covenant consumes its grand-spell Mana payment")
+	_expect(sniff_enemies[1].health < tempest_target_before, "Tempest Covenant chains through enemies across its targeted storm")
+	_expect(sniff.get_voltaic_load() == 1, "a successful Tempest Covenant generates exactly one Voltaic Load")
+
+	for heavenfall_reset_target: ReliquaryPursuer in sniff_enemies:
+		heavenfall_reset_target.health = heavenfall_reset_target.max_health
+		heavenfall_reset_target.global_position = Vector2(550.0 + float(sniff_enemies.find(heavenfall_reset_target)) * 120.0, 360.0)
+	sniff.set("_state", SniffPlayerScript.State.FREE)
+	sniff.mana = SniffPlayerScript.MAX_MANA
+	sniff.heavenfall_cooldown = 0.0
+	sniff.set("_backfire_override", 0)
+	sniff.aim_direction = Vector2.RIGHT
+	var heavenfall_target_before: float = sniff_enemies[2].health
+	sniff.call("_begin_heavenfall")
+	sniff.call("_resolve_heavenfall")
+	_expect(sniff_enemies[2].health < heavenfall_target_before, "Heavenfall strikes a huge targeted zone and chains from its impact")
+	_expect(sniff.get_voltaic_load() == 2, "a successful Heavenfall adds one Voltaic Load regardless of targets hit")
+
+	for discharge_reset_target: ReliquaryPursuer in sniff_enemies:
+		discharge_reset_target.health = discharge_reset_target.max_health
+		discharge_reset_target.global_position = Vector2(550.0 + float(sniff_enemies.find(discharge_reset_target)) * 120.0, 360.0)
+	sniff.set("_state", SniffPlayerScript.State.FREE)
+	sniff.mana = SniffPlayerScript.MAX_MANA
+	sniff.surge_cooldown = 0.0
+	sniff.blessing = 6
+	sniff.set("_backfire_override", 0)
+	var discharge_target_before: float = sniff_enemies[0].health
+	sniff.call("_begin_cataclysm_discharge")
+	var charged_discharge_radius: float = sniff.get_active_spell_radius()
+	_expect(sniff.get_voltaic_load() == 0 and charged_discharge_radius > 680.0, "Cataclysm Discharge consumes all Load and expands dramatically with the charge")
+	sniff.call("_resolve_cataclysm_discharge")
+	_expect(sniff_enemies[0].health < discharge_target_before, "Cataclysm Discharge damages crowds across its stack-scaled radius")
+	_expect(sniff.get_voltaic_load() == 1, "a successful Cataclysm Discharge seeds the next Load cycle with one stack")
+	_expect(DamagePacketScript.sniff_discharge(sniff, 10).health_damage > DamagePacketScript.sniff_discharge(sniff, 1).health_damage * 2.0, "Cataclysm Discharge damage grows into a crowd-wiping ten-stack attack")
+
+	sniff.set("_state", SniffPlayerScript.State.FREE)
+	sniff.mana = SniffPlayerScript.MAX_MANA
+	sniff.blessing = 2
 	sniff.call("_begin_flashstep")
 	_expect(
 		is_equal_approx(sniff.flashstep_cooldown, SniffPlayerScript.FLASHSTEP_COOLDOWN) and sniff.flashstep_cooldown < 1.0,
 		"Flashstep now has a much shorter reusable cooldown"
 	)
+	_expect(sniff.get_voltaic_load() == 2, "the defensive Flashstep neither grants nor consumes Voltaic Load")
 	sniff.set("_state", SniffPlayerScript.State.FREE)
 	sniff.set("_invulnerable_time", 0.0)
 	sniff.call("_set_enemy_phasing", false)
 	(sniff.get("_attack_area") as Area2D).monitoring = false
 
 	sniff.global_position = Vector2(430.0, 360.0)
-	sniff_enemies[2].global_position = Vector2(720.0, 360.0)
-	sniff.blessing = SniffPlayerScript.MAX_BLESSING
-	sniff.call("_begin_divine_annihilation")
-	_expect(sniff.blessing == SniffPlayerScript.MAX_BLESSING and sniff.ultimate_cooldown == 0.0, "Divine Annihilation is blocked when Sniff lacks its high Mana cost")
-	sniff.restore_mana(999.0)
-	var annihilation_mana_before: float = sniff.mana
-	sniff.call("_begin_divine_annihilation")
-	_expect(is_equal_approx(sniff.mana, annihilation_mana_before - SniffPlayerScript.ANNIHILATION_MANA_COST), "Divine Annihilation consumes a large Mana payment")
-	var crowned_health_before: float = sniff.health
-	var blocked_damage: float = sniff.receive_hit(DamagePacketScript.enemy_melee(sniff_enemies[2], 44.0), Vector2.LEFT)
-	_expect(blocked_damage == 0.0 and sniff.health == crowned_health_before, "crowned Divine Annihilation grants cast-window invulnerability")
-	var ultimate_target_before: float = sniff_enemies[2].health
-	sniff.call("_resolve_divine_annihilation")
-	_expect(sniff.blessing == 0, "Divine Annihilation spends the full Blessing crown")
-	_expect(sniff.ultimate_cooldown > 0.0, "Divine Annihilation starts its cooldown")
-	_expect(sniff_enemies[2].health < ultimate_target_before, "Divine Annihilation damages enemies across its arena radius")
+	for worldstorm_reset_target: ReliquaryPursuer in sniff_enemies:
+		worldstorm_reset_target.health = worldstorm_reset_target.max_health
+		worldstorm_reset_target.global_position = Vector2(550.0 + float(sniff_enemies.find(worldstorm_reset_target)) * 120.0, 360.0)
+	sniff.set("_state", SniffPlayerScript.State.FREE)
+	sniff.mana = SniffPlayerScript.MAX_MANA
+	sniff.ultimate_cooldown = 0.0
+	sniff.blessing = 5
+	sniff.set("_backfire_override", 1)
+	var worldstorm_mana_before: float = sniff.mana
+	var worldstorm_health_before: float = sniff.health
+	var worldstorm_target_before: float = sniff_enemies[2].health
+	sniff.call("_begin_worldstorm")
+	sniff.call("_resolve_worldstorm")
+	_expect(is_equal_approx(sniff.mana, worldstorm_mana_before - SniffPlayerScript.WORLDSTORM_MANA_COST), "Worldstorm consumes its overwhelming Mana payment")
+	_expect(sniff_enemies[2].health < worldstorm_target_before and sniff.ultimate_cooldown > 0.0, "Worldstorm chains across its arena-scale radius and starts its cooldown")
+	_expect(sniff.did_last_spell_backfire() and sniff.health < worldstorm_health_before, "grand lightning can feed back and genuinely self-hit Sniff")
 
 	sniff_world.queue_free()
 	await process_frame
@@ -427,20 +463,22 @@ func _run() -> void:
 	var amplified_packet = DamagePacketScript.nad_foresee(nad, 0)
 	var amplified_damage: float = nad_enemy.receive_hit(amplified_packet, Vector2.RIGHT)
 	_expect(is_equal_approx(amplified_damage, amplified_packet.health_damage * 1.6), "five Focus stacks amplify damage to a locked target")
-	_expect(is_equal_approx(nad.get_mana_regen_per_second(), NadPlayerScript.BASE_MANA_REGEN), "Nad has low passive Mana regeneration outside Mental Cascade")
+	_expect(is_equal_approx(nad.get_mana_regen_per_second(), NadPlayerScript.BASE_MANA_REGEN), "Nad uses her improved passive Mana regeneration outside Mental Cascade")
 	_expect(DamagePacketScript.nad_foresee(nad, 0).health_damage == 7.0 and DamagePacketScript.nad_anchor(nad).health_damage == 15.0, "Nad's control tools deal deliberately low health damage")
 
-	nad.mana = NadPlayerScript.MAX_MANA
+	nad.mana = 80.0
 	nad_enemy.set("_control_lock_remaining", 0.0)
 	nad.aim_direction = Vector2.RIGHT
 	var foresee_health_before: float = nad_enemy.health
+	var foresee_mana_before: float = nad.mana
 	nad.call("_begin_foresee")
 	nad.call("_begin_foresee_active")
 	for _frame: int in 3:
 		await physics_frame
 		await process_frame
 	_expect(nad_enemy.health < foresee_health_before, "Foresee damages through its narrow collision probe")
-	_expect(nad.mana >= NadPlayerScript.MAX_MANA - NadPlayerScript.FORESEE_COST and nad.mana < NadPlayerScript.MAX_MANA - NadPlayerScript.FORESEE_COST + 1.0, "Foresee receives only Nad's low passive Mana regeneration")
+	var expected_foresee_mana := foresee_mana_before - NadPlayerScript.FORESEE_COST + NadPlayerScript.FORESEE_HIT_MANA_RESTORE
+	_expect(nad.mana >= expected_foresee_mana and nad.mana < expected_foresee_mana + 1.0, "a successful Foresee refunds part of its Mana cost")
 
 	nad.set("_state", NadPlayer.State.FREE)
 	nad.mana = 40.0
@@ -451,6 +489,7 @@ func _run() -> void:
 		await physics_frame
 		await process_frame
 	_expect(nad.get_cascade_regen_remaining() > 0.0, "a successful Mental Cascade activates Arcane Recursion")
+	_expect(nad.mana >= 40.0 - NadPlayerScript.CASCADE_COST + NadPlayerScript.CASCADE_HIT_MANA_RESTORE, "Arcane Recursion immediately restores Mana when Cascade connects")
 	var cascade_mana_before: float = nad.mana
 	nad.call("_tick_timers", 1.0)
 	_expect(nad.mana >= cascade_mana_before + NadPlayerScript.BASE_MANA_REGEN + NadPlayerScript.CASCADE_MANA_REGEN - 0.01, "Mental Cascade temporarily supplies Nad's strong Mana regeneration")
