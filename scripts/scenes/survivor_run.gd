@@ -243,9 +243,9 @@ func _connect_player_presentation() -> void:
 
 
 func _refresh_enemies() -> void:
-	_enemies = _enemies.filter(func(enemy: ReliquaryPursuer) -> bool:
-		return is_instance_valid(enemy) and enemy.is_alive()
-	)
+	for enemy_index: int in range(_enemies.size() - 1, -1, -1):
+		if not is_instance_valid(_enemies[enemy_index]) or not _enemies[enemy_index].is_alive():
+			_enemies.remove_at(enemy_index)
 
 
 func _tick_spawner(delta: float) -> void:

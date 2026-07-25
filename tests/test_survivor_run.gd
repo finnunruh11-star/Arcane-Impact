@@ -459,6 +459,12 @@ func _check_hero_run(hero_index: int) -> bool:
 	_expect(scene.get_kills() == 1, "%s manual primary defeats its aimed target" % HERO_NAMES[hero_index])
 	_expect(scene.get_experience() >= 1, "%s receives the defeated target's Essence automatically" % HERO_NAMES[hero_index])
 	_expect(get_nodes_in_group(&"survivor_pickups").is_empty(), "%s gains Essence without spawning a collectible shard" % HERO_NAMES[hero_index])
+	for _frame: int in 180:
+		await physics_frame
+		await process_frame
+		if scene.get_enemy_count() >= scene.get_spawn_target_count():
+			break
+	_expect(scene.get_enemy_count() >= 1, "%s prunes defeated enemies and continues spawning replacements" % HERO_NAMES[hero_index])
 	aim_motion.axis_value = 0.0
 	Input.parse_input_event(aim_motion)
 	scene.queue_free()
