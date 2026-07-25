@@ -7,10 +7,12 @@ arena-survival action roguelite. It shares no source code or assets with PVP_DIM
 
 The current playable build opens on a four-hero roster and sends the selected
 hero into a ten-minute run in the Shattered Reliquary. Enemies enter
-continuously from every edge, grow stronger over time, and drop Arcane Essence.
+continuously from every edge, grow stronger over time, and automatically grant
+Arcane Essence when defeated.
 Each hero starts with their manually aimed basic attack and a rank-1 defensive
-escape. Collect enough Essence to pause the horde and choose one of six random
-upgrades: three stats and three hero abilities. The first pick of any other
+escape. Level thresholds follow an easier 3, 5, 7, 9 Essence curve. Filling the
+bar pauses the horde and presents six random upgrades: three stats and three
+hero abilities. The first pick of any other
 ability unlocks rank 1; repeat picks improve its power and cooldown. Each active
 ability evolves independently at ranks 5, 10, 15, and 20, while the basic attack
 evolves with run level at the same milestones.
@@ -29,7 +31,9 @@ Kat, the Vampiric Bulwark, features:
 Sniff, the Storm Catastrophist, features:
 
 - fast collision-backed Lightning Darts with nearby-target chaining;
-- four enormous chain-lightning spells that each consume more than half of base Mana;
+- Wayward Bolt, a fast phasing dash that violently rerolls its direction;
+- three enormous chain-lightning spells that each consume more than half of base Mana;
+- two stored charges for every non-basic ability with continuous sequential recharge;
 - Voltaic Load from successful offensive ability casts, increasing speed and spell power;
 - Cataclysm Discharge, which consumes Load to scale into a crowd wipe;
 - overload damage and spell backfires that can genuinely kill their caster;
@@ -64,7 +68,7 @@ All four slices include:
     to a hard cap of 18, with adaptive refills and separate ranged/support caps;
 - tactical ranged engagement bands, post-shot relocation, formation spacing,
     and collision-matched slam, charge, projectile-lane, and support telegraphs;
-- Arcane Essence pickups, six-choice levels, ranked abilities, five behavior tiers,
+- automatically credited Arcane Essence, six-choice levels, ranked abilities, five behavior tiers,
     six stacking attributes, critical hits, double boons, a run timer, and kill count;
 - sprite-sheet VFX, layered synthesized SFX, hit-stop, camera trauma, flash,
   floating damage, and Xbox rumble;
@@ -136,7 +140,7 @@ after unlocking.
 | Action | Keyboard and mouse | Xbox controller |
 | --- | --- | --- |
 | Lightning Dart | Left mouse | Right trigger |
-| Heavenfall | Right mouse | Left trigger |
+| Wayward Bolt | Right mouse | Left trigger |
 | Tempest Covenant | Q | Right bumper |
 | Cataclysm Discharge | E | Left bumper |
 | Flashstep | Space | A |

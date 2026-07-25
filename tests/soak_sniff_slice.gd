@@ -36,6 +36,9 @@ func _run_soak() -> void:
 		if frame_index > 0 and frame_index % 48 == 0:
 			player.call("_spawn_dart")
 		match frame_index:
+			100:
+				if is_instance_valid(nearest):
+					player.receive_hit(DamagePacket.enemy_melee(nearest, 18.0), -player.aim_direction)
 			150:
 				player.mana = SniffPlayer.MAX_MANA
 				player.set("_backfire_override", 0)
@@ -48,7 +51,7 @@ func _run_soak() -> void:
 			360:
 				player.mana = SniffPlayer.MAX_MANA
 				player.set("_backfire_override", 0)
-				player.call("_begin_heavenfall")
+				player.call("_begin_wayward_bolt")
 			540:
 				player.mana = SniffPlayer.MAX_MANA
 				player.blessing = 6

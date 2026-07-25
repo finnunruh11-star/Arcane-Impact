@@ -249,11 +249,11 @@ func _check_progression_model() -> void:
 	_expect(is_equal_approx(progression.get_basic_attack_power_multiplier(), 2.15), "basic attacks gain a large independent power evolution by level twenty")
 	_expect(progression.get_ability_tier(&"signature") == 2 and progression.get_ability_tier(&"ability_1") == 1, "run levels do not upgrade active abilities")
 	var sniff_options: Array[Dictionary] = progression.roll_options(rng, 11)
-	var found_heavenfall := false
+	var found_wayward_bolt := false
 	for option: Dictionary in sniff_options:
 		if option[&"id"] == &"signature":
-			found_heavenfall = String(option[&"title"]).contains("HEAVENFALL")
-	_expect(found_heavenfall, "hero ability choices use the selected hero's identity")
+			found_wayward_bolt = String(option[&"title"]).contains("WAYWARD BOLT")
+	_expect(found_wayward_bolt, "hero ability choices use the selected hero's identity")
 
 
 func _check_tier_behavior_contracts() -> void:
@@ -263,8 +263,8 @@ func _check_tier_behavior_contracts() -> void:
 	sniff_tier_one.set_survivor_mode(true)
 	sniff_tier_one.set_survivor_ability_progress(&"signature", 1, 1, 0.58, 1.32)
 	sniff_tier_one.aim_direction = Vector2.RIGHT
-	sniff_tier_one.call(&"_begin_heavenfall")
-	_expect(is_equal_approx(sniff_tier_one.get_active_spell_radius(), 230.0), "tier-one Heavenfall begins with a compact impact radius")
+	sniff_tier_one.call(&"_begin_wayward_bolt")
+	_expect(sniff_tier_one.get_wayward_segments_remaining() == 4, "tier-one Wayward Bolt begins with four erratic dash segments")
 	sniff_tier_one.queue_free()
 	await process_frame
 
@@ -274,8 +274,9 @@ func _check_tier_behavior_contracts() -> void:
 	sniff_tier_three.set_survivor_mode(true)
 	sniff_tier_three.set_survivor_ability_progress(&"signature", 1, 3, 1.0, 1.0)
 	sniff_tier_three.aim_direction = Vector2.RIGHT
-	sniff_tier_three.call(&"_begin_heavenfall")
-	_expect(is_equal_approx(sniff_tier_three.get_active_spell_radius(), SniffPlayer.HEAVENFALL_BASE_RADIUS), "tier-three Heavenfall retains its full baseline storm radius")
+	sniff_tier_three.call(&"_begin_wayward_bolt")
+	_expect(sniff_tier_three.get_wayward_segments_remaining() == 6, "tier-three Wayward Bolt uses its full six-segment route")
+	var tier_three_dash_speed: float = float(sniff_tier_three.get("_dash_speed"))
 	sniff_tier_three.queue_free()
 	await process_frame
 
@@ -286,23 +287,11 @@ func _check_tier_behavior_contracts() -> void:
 	sniff_tier_five.set_survivor_ability_progress(&"signature", 1, 5, 1.62, 0.74)
 	sniff_tier_five.global_position = Vector2(200.0, 360.0)
 	sniff_tier_five.aim_direction = Vector2.RIGHT
-	var distant_storm_target := ReliquaryPursuer.new()
-	distant_storm_target.configure(sniff_tier_five, 1)
-	distant_storm_target.max_health = 1200.0
-	distant_storm_target.health = distant_storm_target.max_health
-	distant_storm_target.global_position = Vector2(1300.0, 360.0)
-	root.add_child(distant_storm_target)
-	await process_frame
-	distant_storm_target.process_mode = Node.PROCESS_MODE_DISABLED
-	var distant_target_health := distant_storm_target.health
 	sniff_tier_five.call(&"_set_using_gamepad", true)
 	sniff_tier_five.aim_direction = Vector2.RIGHT
 	sniff_tier_five.set("_backfire_override", 0)
-	sniff_tier_five.call(&"_begin_heavenfall")
-	_expect(is_equal_approx(sniff_tier_five.get_active_spell_radius(), 500.0), "tier-five Heavenfall grows beyond its tier-three impact geometry")
-	sniff_tier_five.call(&"_resolve_heavenfall")
-	_expect(distant_storm_target.health < distant_target_health, "tier-five Heavenfall reaches and damages distant crowds")
-	distant_storm_target.queue_free()
+	sniff_tier_five.call(&"_begin_wayward_bolt")
+	_expect(sniff_tier_five.get_wayward_segments_remaining() == 10 and float(sniff_tier_five.get("_dash_speed")) > tier_three_dash_speed, "tier-five Wayward Bolt doubles the route and accelerates beyond tier three")
 	sniff_tier_five.queue_free()
 	await process_frame
 
@@ -468,7 +457,8 @@ func _check_hero_run(hero_index: int) -> bool:
 		if scene.get_kills() > 0 and scene.get_experience() > 0:
 			break
 	_expect(scene.get_kills() == 1, "%s manual primary defeats its aimed target" % HERO_NAMES[hero_index])
-	_expect(scene.get_experience() >= 1, "%s collects the defeated target's Essence shard" % HERO_NAMES[hero_index])
+	_expect(scene.get_experience() >= 1, "%s receives the defeated target's Essence automatically" % HERO_NAMES[hero_index])
+	_expect(get_nodes_in_group(&"survivor_pickups").is_empty(), "%s gains Essence without spawning a collectible shard" % HERO_NAMES[hero_index])
 	aim_motion.axis_value = 0.0
 	Input.parse_input_event(aim_motion)
 	scene.queue_free()
@@ -484,8 +474,10 @@ func _check_level_up() -> void:
 	for _frame: int in 8:
 		await process_frame
 	var player := scene.get_player() as Node2D
-	scene.grant_test_experience(4)
+	_expect(int(scene.get("_experience_required")) == 3, "the easier level curve starts at three Arcane Essence")
+	scene.grant_test_experience(3)
 	_expect(scene.get_run_level() == 2, "enough Essence advances the run level")
+	_expect(int(scene.get("_experience_required")) == 5, "the easier level curve rises by only two Essence per level")
 	_expect(scene.is_level_up_active() and paused, "level-up pauses the active horde")
 	scene.choose_test_upgrade(&"signature", 1)
 	_expect(not scene.is_level_up_active() and not paused, "choosing a boon resumes the run")

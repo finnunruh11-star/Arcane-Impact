@@ -77,7 +77,7 @@ func _ready() -> void:
 
 	var slots := [
 		[&"primary", "LIGHTNING DART", "LMB", "RT"],
-		[&"heavenfall", "HEAVENFALL", "RMB", "LT"],
+		[&"wayward", "WAYWARD BOLT", "RMB", "LT"],
 		[&"tempest", "TEMPEST COVENANT", "Q", "RB"],
 		[&"discharge", "CATACLYSM DISCHARGE", "E", "LB"],
 		[&"step", "FLASHSTEP", "SPACE", "A"],
@@ -124,13 +124,13 @@ func _process(delta: float) -> void:
 		style.bg_color = (Color("ff5e4c") if overloaded else Color("f1d649")) if active else Color("101e26")
 		style.border_color = (Color("fff0a5") if overloaded else Color("bfffff")) if active else Color("29515b")
 
-	_update_slot(&"primary", 0.0, 1.0, "%d MANA" % int(SniffPlayer.DART_MANA_COST))
-	_update_slot(&"heavenfall", _player.heavenfall_cooldown, 8.0, "%d MANA" % int(SniffPlayer.HEAVENFALL_MANA_COST))
-	_update_slot(&"tempest", _player.blessing_cooldown, 12.0, "%d MANA" % int(SniffPlayer.TEMPEST_MANA_COST))
-	_update_slot(&"discharge", _player.surge_cooldown, 14.0, "%dM + LOAD" % int(SniffPlayer.DISCHARGE_MANA_COST))
-	_update_slot(&"step", _player.flashstep_cooldown, SniffPlayer.FLASHSTEP_COOLDOWN, "%d MANA" % int(SniffPlayer.FLASHSTEP_MANA_COST))
-	_update_slot(&"ultimate", _player.ultimate_cooldown, 28.0, "%d MANA" % int(SniffPlayer.WORLDSTORM_MANA_COST))
-	_apply_progression_status(&"heavenfall", &"signature")
+	_update_slot(&"primary", -1, 0.0, 1.0, "%d MANA" % int(SniffPlayer.DART_MANA_COST))
+	_update_slot(&"wayward", _player.get_ability_charges(&"signature"), _player.wayward_cooldown, SniffPlayer.WAYWARD_BOLT_COOLDOWN, "%d MANA" % int(SniffPlayer.WAYWARD_BOLT_MANA_COST))
+	_update_slot(&"tempest", _player.get_ability_charges(&"ability_1"), _player.blessing_cooldown, SniffPlayer.TEMPEST_COOLDOWN, "%d MANA" % int(SniffPlayer.TEMPEST_MANA_COST))
+	_update_slot(&"discharge", _player.get_ability_charges(&"ability_2"), _player.surge_cooldown, SniffPlayer.DISCHARGE_COOLDOWN, "%dM + LOAD" % int(SniffPlayer.DISCHARGE_MANA_COST))
+	_update_slot(&"step", _player.get_ability_charges(&"evade"), _player.flashstep_cooldown, SniffPlayer.FLASHSTEP_COOLDOWN, "%d MANA" % int(SniffPlayer.FLASHSTEP_MANA_COST))
+	_update_slot(&"ultimate", _player.get_ability_charges(&"ultimate"), _player.ultimate_cooldown, SniffPlayer.WORLDSTORM_COOLDOWN, "%d MANA" % int(SniffPlayer.WORLDSTORM_MANA_COST))
+	_apply_progression_status(&"wayward", &"signature")
 	_apply_progression_status(&"tempest", &"ability_1")
 	_apply_progression_status(&"discharge", &"ability_2")
 	_apply_progression_status(&"step", &"evade")
@@ -157,20 +157,24 @@ func announce(message: String) -> void:
 	_announcement_timer = 1.45
 
 
-func _update_slot(slot_id: StringName, remaining: float, maximum: float, ready_text: String) -> void:
+func _update_slot(slot_id: StringName, charges: int, remaining: float, maximum: float, ready_text: String) -> void:
 	if not _slot_data.has(slot_id):
 		return
 	var data: Dictionary = _slot_data[slot_id]
 	var progress := data[&"progress"] as ProgressBar
 	var status := data[&"status"] as Label
-	if remaining <= 0.0:
+	if charges < 0:
 		progress.value = 100.0
 		status.text = ready_text
 		status.add_theme_color_override(&"font_color", Color("f7df68"))
+	elif charges >= SniffPlayer.MAX_ABILITY_CHARGES:
+		progress.value = 100.0
+		status.text = "%d/%d  %s" % [charges, SniffPlayer.MAX_ABILITY_CHARGES, ready_text]
+		status.add_theme_color_override(&"font_color", Color("f7df68"))
 	else:
 		progress.value = (1.0 - clampf(remaining / maximum, 0.0, 1.0)) * 100.0
-		status.text = "%.1f" % remaining
-		status.add_theme_color_override(&"font_color", Color("88a5aa"))
+		status.text = "%d/%d  %s" % [charges, SniffPlayer.MAX_ABILITY_CHARGES, ready_text] if charges > 0 else "0/%d  %.1fs" % [SniffPlayer.MAX_ABILITY_CHARGES, remaining]
+		status.add_theme_color_override(&"font_color", Color("f7df68") if charges > 0 else Color("88a5aa"))
 
 
 func _apply_progression_status(display_slot: StringName, progression_slot: StringName) -> void:

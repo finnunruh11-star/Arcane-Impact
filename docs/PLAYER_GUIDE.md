@@ -82,8 +82,9 @@ circles are beneficial enemy support and do not damage the hero. Enemies use
 run, anticipation, attack, recoil, stagger, and collapse poses around their
 authored sprite animations. The framed indicator above each enemy shows health
 in red, Resolve in cyan, and a small role-colored diamond.
-Defeated enemies drop green Arcane Essence shards. Move near a shard to draw it
-in. Filling the Essence bar
+Defeated enemies grant Arcane Essence immediately; no pickup or retrieval is
+required. The first level needs 3 Essence, and each later threshold adds only
+2 more: 3, 5, 7, 9, and so on. Filling the Essence bar
 pauses combat and presents six unique choices: three random stats and three
 random abilities from the selected hero. Keyboard choices use 1 through 6.
 On controller, move focus with the D-pad or left stick and press Xbox A to
@@ -325,9 +326,13 @@ him, so every cast balances crowd destruction against Mana and lethal risk.
 - **Health:** 245 maximum. Overload and spell backfires can reduce it to zero.
 - **Resolve:** 138 maximum.
 - **Mana:** 130 maximum and regenerates 8.5 per second. Each grand spell costs
-  more than half of base Mana, preventing consecutive casts without recovery.
+  more than half of base Mana. Stored charges do not waive Mana or Load costs.
+- **Ability charges:** Wayward Bolt, Tempest Covenant, Cataclysm Discharge,
+  Flashstep, and Worldstorm each store up to two charges. Recharges occur one
+  at a time. If one charge is ready, the timer continues filling the second;
+  spending the ready charge does not reset that in-progress timer.
 - **Voltaic Load:** 0-10 stacks, unlocked by learning Tempest Covenant. A
-  Heavenfall, Tempest Covenant, Cataclysm Discharge, or Worldstorm that damages
+  Wayward Bolt, Tempest Covenant, Cataclysm Discharge, or Worldstorm that damages
   at least one enemy grants exactly one Load, regardless of target count.
   Lightning Dart and Flashstep never grant Load.
 - **Load bonuses:** each stack grants 2.5% movement speed and 5.5% spell power.
@@ -350,19 +355,23 @@ pressure but never generates Voltaic Load.
 The direct hit starts at 18 damage and gains 8.5% damage per Load snapshot.
 Each chain step deals 72% of the previous depth's damage.
 
-### Heavenfall
+### Wayward Bolt
 
 **Input:** Right mouse / Left trigger<br>
 **Cost:** 72 Mana<br>
 **Cooldown:** 8 seconds
 
-Calls a vertical bolt 500 pixels along Sniff's aim after a 0.64-second cast.
-At full tier 3, the impact covers a 340-pixel radius and chains through up to
-10 targets. Each target takes 74 base health and 62 base Resolve damage, plus
-4 health and 3 Resolve damage per Load in the cast snapshot.
+Sniff becomes a phasing lightning bolt and tears through six rapid dash segments
+at full tier 3. After every segment, the heading violently turns by roughly
+41-112 degrees and may bend partway toward a random enemy within 620 pixels.
+The route is deliberately difficult to predict or steer after its first burst.
+Sniff is invulnerable during the route and each crossed enemy is hit once.
 
-Heavenfall grants one Load if any target takes damage. Its base backfire chance
-is 7%, plus 2.5 percentage points per snapshotted Load.
+Each hit deals 46 base health and 54 base Resolve damage, plus 3.5 health and
+2.5 Resolve damage per snapshotted Load. The complete dash grants exactly one
+Load if it hits anything. Its base backfire chance is 11%, plus 2.5 percentage
+points per snapshotted Load. Tiers 1-5 use 4, 5, 6, 8, and 10 segments and gain
+speed at every tier.
 
 ### Tempest Covenant
 
@@ -424,11 +433,13 @@ making a fully loaded cast both devastating and dangerous.
 
 1. Use Lightning Darts for cheap pressure while Mana recovers; they do not add Load.
 2. Land Tempest Covenant to unlock and begin the Voltaic Load cycle.
-3. Alternate successful grand spells to gain speed and power one stack at a time.
-4. Decide whether to Discharge before seven Load or accept overload damage for
+3. Spend Wayward Bolt to ricochet through a packed formation, then use its
+   second stored charge for an escape or another unpredictable pass.
+4. Alternate successful grand spells to gain speed and power one stack at a time.
+5. Decide whether to Discharge before seven Load or accept overload damage for
   a larger crowd wipe.
-5. Use Worldstorm on a spread-out horde, but respect its rising feedback chance.
-6. Flashstep through attacks without changing the Load prepared for Discharge.
+6. Use Worldstorm on a spread-out horde, but respect its rising feedback chance.
+7. Flashstep through attacks without changing the Load prepared for Discharge.
 
 ## Nad: Eldritch Tactician
 
@@ -738,8 +749,9 @@ every 10 seconds.
 
 The upper-left panel shows the selected hero's health, Mana, Resolve, state,
 and hero-specific resources. Kat also shows Ward over health, a Vitality bar,
-and active Choir/Halo drains; Sniff shows ten Voltaic Load pips and flags the
-seven-stack overload threshold. Nad shows
+and active Choir/Halo drains; Sniff shows ten Voltaic Load pips, flags the
+seven-stack overload threshold, and shows each non-basic ability's stored
+charges while the next charge refills. Nad shows
 total active Mental Focus, locked-enemy count, and tier-dependent Anchor pips.
 Fin shows his current form, total active Pierce Marks, Ward, concealment,
 Crossbow reload, traps, and tool supplies. The bottom slots show keyboard

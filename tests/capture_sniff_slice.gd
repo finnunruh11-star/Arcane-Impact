@@ -50,20 +50,18 @@ func _capture() -> void:
 
 	player.set("_state", SniffPlayer.State.FREE)
 	player.mana = SniffPlayer.MAX_MANA
-	player.heavenfall_cooldown = 0.0
+	player.wayward_cooldown = 0.0
 	player.aim_direction = Vector2.RIGHT
 	player.set("_backfire_override", 0)
-	player.call("_begin_heavenfall")
-	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("HEAVENFALL")
-	for _frame: int in 3:
+	player.call("_begin_wayward_bolt")
+	(scene.get_node(^"SniffCombatHud") as SniffCombatHud).announce("WAYWARD BOLT / 2 CHARGES")
+	for _frame: int in 14:
 		await physics_frame
 		await process_frame
-	player.call("_resolve_heavenfall")
-	for _frame: int in 2:
-		await process_frame
-	if not _save_capture("sniff_heavenfall.png"):
+	if not _save_capture("sniff_wayward_bolt.png"):
 		quit(1)
 		return
+	player.call("_finish_wayward_bolt")
 
 	player.set("_state", SniffPlayer.State.FREE)
 	player.mana = SniffPlayer.MAX_MANA

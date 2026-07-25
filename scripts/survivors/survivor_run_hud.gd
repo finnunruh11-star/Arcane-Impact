@@ -146,7 +146,7 @@ func _build_run_display() -> void:
 	root.add_child(xp_panel)
 	_xp_bar = _make_bar(Vector2(12.0, 20.0), Vector2(492.0, 7.0), Color("55d7a7"))
 	xp_panel.add_child(_xp_bar)
-	_xp_label = _make_label("ARCANE ESSENCE  0 / 4", Vector2(12.0, 1.0), Vector2(492.0, 18.0), 10, Color("d9f5e8"), HORIZONTAL_ALIGNMENT_CENTER)
+	_xp_label = _make_label("ARCANE ESSENCE  0 / 3", Vector2(12.0, 1.0), Vector2(492.0, 18.0), 10, Color("d9f5e8"), HORIZONTAL_ALIGNMENT_CENTER)
 	xp_panel.add_child(_xp_label)
 
 

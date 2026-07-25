@@ -346,12 +346,26 @@ func _run() -> void:
 		await process_frame
 
 	_expect(
-		SniffPlayerScript.HEAVENFALL_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5
+		SniffPlayerScript.WAYWARD_BOLT_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5
 		and SniffPlayerScript.TEMPEST_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5
 		and SniffPlayerScript.DISCHARGE_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5
 		and SniffPlayerScript.WORLDSTORM_MANA_COST > SniffPlayerScript.MAX_MANA * 0.5,
 		"every offensive Sniff spell costs more than half his base Mana"
 	)
+	var all_sniff_slots_start_full := true
+	for charged_slot: StringName in [&"signature", &"ability_1", &"ability_2", &"evade", &"ultimate"]:
+		all_sniff_slots_start_full = all_sniff_slots_start_full and sniff.get_ability_charges(charged_slot) == SniffPlayerScript.MAX_ABILITY_CHARGES
+	_expect(all_sniff_slots_start_full, "every non-basic Sniff ability can store two charges")
+	sniff.call("_consume_ability_charge", &"ability_1")
+	sniff.call("_tick_ability_recharge", SniffPlayerScript.TEMPEST_COOLDOWN * 0.5, &"ability_1")
+	var half_recharge_remaining := sniff.get_ability_recharge_remaining(&"ability_1")
+	_expect(sniff.get_ability_charges(&"ability_1") == 1 and is_equal_approx(half_recharge_remaining, SniffPlayerScript.TEMPEST_COOLDOWN * 0.5), "a second charge keeps recharging while Tempest Covenant is already usable")
+	sniff.call("_consume_ability_charge", &"ability_1")
+	_expect(sniff.get_ability_charges(&"ability_1") == 0 and is_equal_approx(sniff.get_ability_recharge_remaining(&"ability_1"), half_recharge_remaining), "spending the stored charge does not reset the active recharge timer")
+	sniff.call("_tick_ability_recharge", half_recharge_remaining, &"ability_1")
+	_expect(sniff.get_ability_charges(&"ability_1") == 1 and is_equal_approx(sniff.get_ability_recharge_remaining(&"ability_1"), SniffPlayerScript.TEMPEST_COOLDOWN), "the queue restores one charge and immediately starts rebuilding the second")
+	sniff.call("_tick_ability_recharge", SniffPlayerScript.TEMPEST_COOLDOWN, &"ability_1")
+	_expect(sniff.get_ability_charges(&"ability_1") == 2 and is_zero_approx(sniff.get_ability_recharge_remaining(&"ability_1")), "the recharge queue fills to two and stops at its cap")
 	for tempest_reset_target: ReliquaryPursuer in sniff_enemies:
 		tempest_reset_target.health = tempest_reset_target.max_health
 		tempest_reset_target.global_position = Vector2(550.0 + float(sniff_enemies.find(tempest_reset_target)) * 120.0, 360.0)
@@ -368,19 +382,27 @@ func _run() -> void:
 	_expect(sniff_enemies[1].health < tempest_target_before, "Tempest Covenant chains through enemies across its targeted storm")
 	_expect(sniff.get_voltaic_load() == 1, "a successful Tempest Covenant generates exactly one Voltaic Load")
 
-	for heavenfall_reset_target: ReliquaryPursuer in sniff_enemies:
-		heavenfall_reset_target.health = heavenfall_reset_target.max_health
-		heavenfall_reset_target.global_position = Vector2(550.0 + float(sniff_enemies.find(heavenfall_reset_target)) * 120.0, 360.0)
+	for wayward_reset_target: ReliquaryPursuer in sniff_enemies:
+		wayward_reset_target.health = wayward_reset_target.max_health
+		wayward_reset_target.global_position = Vector2(550.0 + float(sniff_enemies.find(wayward_reset_target)) * 120.0, 360.0)
 	sniff.set("_state", SniffPlayerScript.State.FREE)
 	sniff.mana = SniffPlayerScript.MAX_MANA
-	sniff.heavenfall_cooldown = 0.0
+	sniff.wayward_cooldown = 0.0
 	sniff.set("_backfire_override", 0)
 	sniff.aim_direction = Vector2.RIGHT
-	var heavenfall_target_before: float = sniff_enemies[2].health
-	sniff.call("_begin_heavenfall")
-	sniff.call("_resolve_heavenfall")
-	_expect(sniff_enemies[2].health < heavenfall_target_before, "Heavenfall strikes a huge targeted zone and chains from its impact")
-	_expect(sniff.get_voltaic_load() == 2, "a successful Heavenfall adds one Voltaic Load regardless of targets hit")
+	sniff_enemies[0].global_position = sniff.global_position + Vector2(80.0, 0.0)
+	var wayward_target_before: float = sniff_enemies[0].health
+	sniff.call("_begin_wayward_bolt")
+	var first_wayward_direction: Vector2 = sniff.get("_dash_direction")
+	for _wayward_frame: int in 4:
+		await physics_frame
+		await process_frame
+	sniff.call("_choose_next_wayward_direction")
+	var second_wayward_direction: Vector2 = sniff.get("_dash_direction")
+	sniff.call("_finish_wayward_bolt")
+	_expect(sniff_enemies[0].health < wayward_target_before, "Wayward Bolt uses a collision-backed dash to damage crossed enemies")
+	_expect(first_wayward_direction.dot(second_wayward_direction) < 0.90 and sniff.get_wayward_direction_changes() >= 1, "Wayward Bolt sharply rerolls its travel direction between segments")
+	_expect(sniff.get_voltaic_load() == 2, "a successful Wayward Bolt adds one Voltaic Load regardless of targets hit")
 
 	for discharge_reset_target: ReliquaryPursuer in sniff_enemies:
 		discharge_reset_target.health = discharge_reset_target.max_health

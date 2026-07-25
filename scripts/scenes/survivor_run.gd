@@ -3,7 +3,6 @@ extends Node2D
 
 
 const SurvivorRunHudScript := preload("res://scripts/survivors/survivor_run_hud.gd")
-const ExperienceShardScript := preload("res://scripts/survivors/survivor_experience_shard.gd")
 const ProgressionScript := preload("res://scripts/survivors/survivor_progression.gd")
 const SpawnDirectorScript := preload("res://scripts/survivors/survivor_spawn_director.gd")
 const HERO_SCRIPTS := [
@@ -24,7 +23,8 @@ const RUN_DURATION := 600.0
 const MAX_ENEMIES := 18
 const KILL_RATE_WINDOW := 30.0
 const KILL_RATE_GRACE := 10.0
-const BASE_PICKUP_RADIUS := 120.0
+const BASE_EXPERIENCE_REQUIRED := 3
+const EXPERIENCE_PER_LEVEL := 2
 const SPAWN_EDGE_INSET := 64.0
 const SPAWN_CLEARANCE := 54.0
 const SPAWN_PLAYER_DISTANCE := 460.0
@@ -53,7 +53,7 @@ var _kills := 0
 var _recent_kill_times: Array[float] = []
 var _level := 1
 var _experience := 0
-var _experience_required := 4
+var _experience_required := BASE_EXPERIENCE_REQUIRED
 var _experience_multiplier := 1.0
 var _pending_upgrade_values: Dictionary = {}
 var _pending_basic_attack_tier := 0
@@ -366,13 +366,7 @@ func _tick_recovery(delta: float) -> void:
 func _on_enemy_defeated(enemy: ReliquaryPursuer) -> void:
 	_kills += 1
 	_recent_kill_times.append(_run_time)
-	var shard = ExperienceShardScript.new()
-	shard.name = "ArcaneEssence"
-	shard.configure(_player, 1 + int(floor(_run_time / 180.0)), BASE_PICKUP_RADIUS)
-	shard.global_position = enemy.global_position
-	shard.add_to_group(&"survivor_pickups")
-	shard.collected.connect(_on_experience_collected)
-	_world.add_child(shard)
+	_on_experience_collected(1 + int(floor(_run_time / 180.0)))
 	_update_huds()
 
 
@@ -392,7 +386,7 @@ func _try_level_up() -> void:
 	_experience -= _experience_required
 	var previous_basic_tier: int = int(_progression.get_basic_attack_tier())
 	_level += 1
-	_experience_required = 4 + _level * 3
+	_experience_required = BASE_EXPERIENCE_REQUIRED + (_level - 1) * EXPERIENCE_PER_LEVEL
 	_progression.set_run_level(_level)
 	var next_basic_tier: int = int(_progression.get_basic_attack_tier())
 	if next_basic_tier > previous_basic_tier:

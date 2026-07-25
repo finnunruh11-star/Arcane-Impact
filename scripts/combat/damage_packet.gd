@@ -132,17 +132,17 @@ static func sniff_dart(owner: Node, blessing_count: int, chain_depth := 0) -> Da
 	return packet
 
 
-static func sniff_heavenfall(owner: Node, load_count: int) -> DamagePacket:
+static func sniff_wayward_bolt(owner: Node, load_count: int) -> DamagePacket:
 	var load := clampi(load_count, 0, 10)
 	var packet := DamagePacket.new()
 	packet.source = owner
-	packet.health_damage = 74.0 + float(load) * 4.0
-	packet.resolve_damage = 62.0 + float(load) * 3.0
-	packet.knockback_force = 610.0
-	packet.hit_stop_seconds = 0.072
-	packet.camera_trauma = 0.72
-	packet.rumble_strength = 0.82
-	packet.tags.assign([&"area", &"lightning", &"signature", &"chain", &"heavy"])
+	packet.health_damage = 46.0 + float(load) * 3.5
+	packet.resolve_damage = 54.0 + float(load) * 2.5
+	packet.knockback_force = 460.0
+	packet.hit_stop_seconds = 0.052
+	packet.camera_trauma = 0.52
+	packet.rumble_strength = 0.62
+	packet.tags.assign([&"movement", &"lightning", &"signature", &"chain", &"control"])
 	packet.survivor_ability_slot = &"signature"
 	packet.survivor_scaling = &"intelligence"
 	return packet
